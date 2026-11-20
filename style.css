@@ -1,0 +1,557 @@
+/* =====================================================================
+   Цвета берём из темы Telegram (--tg-theme-...). Telegram сам подставляет их,
+   поэтому приложение выглядит «родным» и в светлой, и в тёмной теме.
+   Второе значение в var(..., запасное) — для обычного браузера.
+   ===================================================================== */
+:root {
+  --bg: var(--tg-theme-bg-color, #ffffff);
+  --bg2: var(--tg-theme-secondary-bg-color, #f1f1f5);
+  --text: var(--tg-theme-text-color, #16161a);
+  --hint: var(--tg-theme-hint-color, #8a8a93);
+  --link: var(--tg-theme-link-color, #2481cc);
+  --btn: var(--tg-theme-button-color, #2481cc);
+  --btn-text: var(--tg-theme-button-text-color, #ffffff);
+  --danger: var(--tg-theme-destructive-text-color, #e5484d);
+  --ok: #30a46c;
+  --sep: rgba(127, 127, 127, 0.18);
+  --soft: rgba(127, 127, 127, 0.1);
+  --radius: 14px;
+  --tabs-h: 64px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: var(--tg-theme-bg-color, #1f1f23);
+    --bg2: var(--tg-theme-secondary-bg-color, #121214);
+    --text: var(--tg-theme-text-color, #f2f2f5);
+    --hint: var(--tg-theme-hint-color, #8d8d96);
+    --link: var(--tg-theme-link-color, #5aa7ff);
+    --btn: var(--tg-theme-button-color, #3a8de0);
+  }
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }
+
+html, body { margin: 0; }
+
+body {
+  background: var(--bg2);
+  color: var(--text);
+  font: 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* место под нижнее меню и главную кнопку */
+  padding-bottom: calc(var(--tabs-h) + 80px + env(safe-area-inset-bottom));
+}
+body.overlay { padding-bottom: calc(90px + env(safe-area-inset-bottom)); }
+body.in-tg { padding-bottom: calc(var(--tabs-h) + 20px + env(safe-area-inset-bottom)); }
+body.in-tg.overlay { padding-bottom: 24px; }
+
+main { max-width: 640px; margin: 0 auto; padding: 0 12px; }
+
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--link); text-decoration: none; }
+
+.hint { color: var(--hint); font-size: 14px; }
+.debt { color: var(--danger); font-weight: 600; }
+.ok { color: var(--ok); font-weight: 600; }
+.money { white-space: nowrap; }
+.grow { flex: 1; min-width: 0; }
+.row { display: flex; align-items: center; gap: 8px; }
+.between { justify-content: space-between; }
+.wrap { flex-wrap: wrap; }
+.nowrap { white-space: nowrap; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Шапка ---------- */
+.top {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 6px;
+  max-width: 640px; margin: 0 auto;
+  padding: 10px 12px; background: var(--bg2);
+}
+.top h1 { flex: 1; margin: 0; font-size: 22px; font-weight: 700; }
+.icon-btn {
+  display: flex; align-items: center; justify-content: center;
+  min-width: 42px; height: 42px; border: 0; border-radius: 12px;
+  background: var(--bg); color: var(--text);
+}
+.icon-btn .ic { width: 22px; height: 22px; }
+.badge {
+  font-size: 12px; padding: 3px 8px; border-radius: 99px;
+  background: #f5a52433; color: #b4720a; font-weight: 600;
+}
+
+/* ---------- Нижнее меню ---------- */
+.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: flex; height: calc(var(--tabs-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--bg); border-top: 1px solid var(--sep);
+}
+.tabs button {
+  position: relative; flex: 1; border: 0; background: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  font-size: 12px; color: var(--hint); gap: 2px;
+}
+.tabs .ti { width: 25px; height: 25px; }
+.tabs button.active { color: var(--btn); font-weight: 600; }
+.tabs .count {
+  position: absolute; top: 6px; left: 55%;
+  min-width: 18px; padding: 0 5px; border-radius: 99px;
+  background: var(--danger); color: #fff; font-size: 11px; line-height: 18px; font-weight: 700;
+}
+.tabs .count:empty { display: none; }
+body.overlay .tabs { display: none; }
+
+/* ---------- Главная кнопка (только в браузере) ---------- */
+.main-btn {
+  position: fixed; z-index: 21; left: 12px; right: 12px;
+  bottom: calc(var(--tabs-h) + 26px + env(safe-area-inset-bottom));
+  max-width: 616px; margin: 0 auto;
+  height: 54px; border: 0; border-radius: var(--radius);
+  background: var(--btn); color: var(--btn-text); font-size: 17px; font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .15);
+}
+body.overlay .main-btn { bottom: calc(12px + env(safe-area-inset-bottom)); }
+.main-btn:disabled { opacity: .6; }
+
+/* ---------- Карточки и секции ---------- */
+.card {
+  background: var(--bg); border-radius: var(--radius);
+  padding: 14px; margin-bottom: 10px;
+}
+.section-title {
+  margin: 18px 4px 8px; font-size: 13px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .03em; color: var(--hint);
+}
+.section-title:first-child { margin-top: 6px; }
+
+.lines > div { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; }
+.lines > div + div { border-top: 1px solid var(--sep); }
+.lines .big { font-size: 18px; font-weight: 700; }
+
+/* ---------- Кнопки ---------- */
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; min-height: 48px; padding: 10px 14px;
+  border: 0; border-radius: 12px;
+  background: var(--soft); font-size: 16px; font-weight: 600; text-align: center;
+}
+.btn.primary { background: var(--btn); color: var(--btn-text); }
+.btn.wa { background: #25d366; color: #fff; }
+.btn.danger { color: var(--danger); }
+.btn.small { min-height: 40px; font-size: 15px; padding: 8px 12px; width: auto; }
+.btn-row { display: flex; gap: 8px; margin-top: 10px; }
+.btn-row > * { flex: 1; }
+.btn + .btn { margin-top: 8px; }
+.btn-row .btn + .btn { margin-top: 0; }
+
+/* ---------- Поля ввода ---------- */
+.field { margin-bottom: 12px; position: relative; }
+.field:last-child { margin-bottom: 0; }
+.field label { display: block; font-size: 14px; color: var(--hint); margin: 0 2px 4px; }
+.input {
+  width: 100%; height: 48px; padding: 0 12px;
+  border: 1px solid var(--sep); border-radius: 12px;
+  background: var(--bg2); font-size: 16px; /* 16px — чтобы iPhone не увеличивал страницу */
+  outline: none;
+}
+textarea.input { height: 110px; padding: 10px 12px; resize: vertical; }
+.input:focus { border-color: var(--btn); }
+.input.bad { border-color: var(--danger); }
+.fields-row { display: flex; gap: 8px; }
+.fields-row > .field { flex: 1; min-width: 0; }
+
+/* Переключатель из нескольких кнопок (Розница/Опт, $/€) */
+.seg { display: flex; background: var(--bg2); border-radius: 12px; padding: 3px; gap: 3px; }
+.seg button {
+  flex: 1; min-height: 42px; border: 0; border-radius: 10px; background: none;
+  font-size: 15px; font-weight: 600; color: var(--hint);
+}
+.seg button.on { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+.seg.bad { outline: 2px solid var(--danger); outline-offset: 2px; }
+
+/* Кнопки − 1 + для количества */
+.stepper { display: flex; align-items: center; height: 48px; border: 1px solid var(--sep); border-radius: 12px; background: var(--bg2); }
+.stepper button { width: 44px; height: 100%; border: 0; background: none; font-size: 22px; color: var(--btn); }
+.stepper input { width: 40px; flex: 1; min-width: 0; border: 0; background: none; text-align: center; font-size: 16px; outline: none; }
+
+/* Подсказки клиентов под полем имени */
+.suggest { margin-top: 4px; border-radius: 12px; overflow: hidden; border: 1px solid var(--sep); }
+.suggest:empty { display: none; }
+.suggest button {
+  display: flex; width: 100%; justify-content: space-between; gap: 8px;
+  padding: 12px; border: 0; background: var(--bg); text-align: left;
+}
+.suggest button + button { border-top: 1px solid var(--sep); }
+
+/* ---------- Товар в форме ---------- */
+.item-card { border: 1px solid var(--sep); }
+.item-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: 600; }
+.item-del { border: 0; background: none; color: var(--danger); font-size: 15px; padding: 6px; }
+.item-price { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--sep); }
+.item-price b { font-size: 17px; }
+
+.totals { position: relative; }
+.totals .lines .big { font-size: 20px; }
+
+.paste-info { margin-top: 8px; font-size: 14px; }
+
+/* ---------- Список заказов ---------- */
+.search-wrap { position: relative; margin: 0 0 8px; }
+.search-wrap .ic { position: absolute; left: 12px; top: 14px; width: 20px; height: 20px; color: var(--hint); pointer-events: none; }
+.search { padding-left: 40px; background: var(--bg); border-color: transparent; }
+.chips {
+  display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; margin: 0 -12px; padding-left: 12px; padding-right: 12px;
+  scrollbar-width: none;
+}
+.chips::-webkit-scrollbar { display: none; }
+.chip {
+  flex: none; height: 36px; padding: 0 12px; border-radius: 99px;
+  border: 1px solid var(--sep); background: var(--bg); font-size: 14px; white-space: nowrap;
+}
+.chip.on { background: var(--btn); color: var(--btn-text); border-color: var(--btn); }
+.chip .n { opacity: .65; margin-left: 4px; }
+
+.toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.toolbar:empty { display: none; }
+.link-btn { display: inline-flex; align-items: center; gap: 5px; border: 0; background: none; color: var(--link); font-size: 15px; padding: 8px 4px; }
+.seg-sm { flex: 1; max-width: 240px; background: var(--bg); }
+.seg-sm button { min-height: 34px; font-size: 14px; }
+.seg-sm button.on { background: var(--bg2); box-shadow: none; }
+
+/* Иконки */
+.ic { width: 20px; height: 20px; flex: none; }
+.btn.small .ic, .link-btn .ic { width: 18px; height: 18px; }
+.small { font-size: 13px; }
+
+/* ---------- Плитки с цифрами (вариант Б) ---------- */
+.tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 2px 0 10px; }
+.tile {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 12px; border: 2px solid transparent; border-radius: var(--radius);
+  background: var(--tbg); text-align: left; color: var(--text);
+}
+.tile.on { border-color: var(--t); }
+.tile-l { display: flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; color: var(--t); }
+.tile-l .ic { width: 18px; height: 18px; }
+.tile-v { font-size: 24px; font-weight: 800; line-height: 1.2; white-space: nowrap; }
+.tile-s { font-size: 12px; color: var(--hint); }
+.tile.warn { --t: #d48806; --tbg: rgba(245, 165, 36, .14); }
+.tile.danger { --t: #e5484d; --tbg: rgba(229, 72, 77, .12); }
+.tile.accent { --t: #1f86e0; --tbg: rgba(0, 144, 255, .12); }
+.tile.ok { --t: #2b9a5e; --tbg: rgba(48, 164, 108, .13); }
+@media (prefers-color-scheme: dark) {
+  .tile.warn { --t: #f5b041; } .tile.accent { --t: #52a9ff; } .tile.ok { --t: #4cc38a; } .tile.danger { --t: #ff6b70; }
+}
+
+/* Строка заказа с цветной полоской статуса слева */
+.lrow.stripe { position: relative; padding-left: 18px; }
+.lrow.stripe::before {
+  content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 4px;
+  border-radius: 0 4px 4px 0; background: var(--c);
+}
+.lrow .st { color: var(--c); font-weight: 600; }
+
+.order { display: flex; gap: 12px; align-items: center; }
+.order .client { font-weight: 600; }
+.order .r1 { display: flex; align-items: center; gap: 8px; }
+.order .r2 { display: flex; align-items: center; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+.order.checked { outline: 2px solid var(--btn); }
+.check {
+  flex: none; width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--sep);
+  display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--btn-text);
+}
+.order.checked .check { background: var(--btn); border-color: var(--btn); }
+
+/* Компактный список: строки внутри одной карточки, разделены линией */
+.list { background: var(--bg); border-radius: var(--radius); overflow: hidden; margin-bottom: 10px; }
+.lrow { display: flex; align-items: center; gap: 10px; padding: 10px 14px; min-height: 60px; }
+.lrow + .lrow { border-top: 1px solid var(--sep); }
+.lrow:active { background: var(--soft); }
+.lrow.checked { background: color-mix(in srgb, var(--btn) 12%, transparent); }
+.lrow .l1 { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.lrow .no { font-weight: 700; flex: none; }
+.lrow .name { font-weight: 600; flex: 1; min-width: 0; }
+.lrow .l2 { margin-top: 2px; font-size: 13px; color: var(--hint); }
+.lrow .rt { flex: none; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; font-weight: 600; }
+.lrow .check { width: 24px; height: 24px; }
+.lrow.checked .check { background: var(--btn); border-color: var(--btn); }
+.pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.pill.sm { font-size: 12px; padding: 1px 7px; }
+.center { text-align: center; padding: 6px 12px; }
+
+/* Цветной статус. Цвет передаётся через --c */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  padding: 3px 9px; border-radius: 99px; font-size: 13px; font-weight: 600; white-space: nowrap;
+  background: color-mix(in srgb, var(--c) 18%, transparent);
+  background: var(--cbg);
+}
+.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--c); }
+
+/* ---------- Экран заказа ---------- */
+.status-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.status-grid button {
+  min-height: 46px; padding: 6px 8px; border-radius: 12px;
+  border: 2px solid transparent; background: var(--cbg); font-size: 14px; font-weight: 600;
+}
+.status-grid button.cur { border-color: var(--c); }
+.status-grid button.cur::after { content: " ✓"; }
+
+.item-line { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; }
+.item-line + .item-line { border-top: 1px solid var(--sep); }
+.item-line .mark { flex: none; width: 22px; text-align: center; }
+
+/* ---------- Выкупить ---------- */
+.group-h { display: flex; justify-content: space-between; align-items: baseline; margin: 18px 4px 8px; }
+.group-h b { font-size: 17px; }
+.buy-item { display: flex; gap: 12px; align-items: center; padding: 12px 0; }
+.buy-item + .buy-item { border-top: 1px solid var(--sep); }
+.buy-item.done .grow { opacity: .5; text-decoration: line-through; }
+.cb {
+  flex: none; width: 34px; height: 34px; border-radius: 10px;
+  border: 2px solid var(--sep); background: none; font-size: 18px; font-weight: 700; color: #fff;
+}
+.buy-item.done .cb { background: var(--ok); border-color: var(--ok); }
+
+/* ---------- Пустые экраны, загрузка, ошибка ---------- */
+.empty { text-align: center; padding: 60px 20px; color: var(--hint); }
+.empty .e-icon { font-size: 46px; margin-bottom: 10px; }
+.empty b { display: block; color: var(--text); font-size: 18px; margin-bottom: 6px; }
+.spinner {
+  width: 34px; height: 34px; margin: 0 auto 14px; border-radius: 50%;
+  border: 3px solid var(--sep); border-top-color: var(--btn); animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.receipt {
+  white-space: pre-wrap; font: 15px/1.5 ui-monospace, Menlo, Consolas, monospace;
+  background: var(--bg2); border-radius: 12px; padding: 12px; margin: 0;
+}
+
+.big-sum { font-size: 30px; font-weight: 800; color: var(--danger); }
+
+/* ---------- Нижняя панель (sheet) ---------- */
+.sheet-bg { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, .4); }
+.sheet {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
+  max-width: 640px; margin: 0 auto; max-height: 85vh; overflow-y: auto;
+  background: var(--bg); border-radius: 18px 18px 0 0;
+  padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+  animation: up .2s ease-out;
+}
+.sheet h3 { margin: 0 0 12px; font-size: 19px; }
+@keyframes up { from { transform: translateY(40px); opacity: 0; } }
+
+/* ---------- Уведомление ---------- */
+.toast {
+  position: fixed; z-index: 50; left: 50%; top: 14px; transform: translateX(-50%);
+  max-width: calc(100% - 32px); padding: 12px 16px; border-radius: 12px;
+  background: rgba(30, 30, 34, .94); color: #fff; font-size: 15px; text-align: center;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .25);
+}
+.toast.err { background: #c62f34; }
+
+body.busy main, body.busy .sheet { pointer-events: none; opacity: .7; }
+
+/* =====================================================================
+   Стиль Б для остальных экранов
+   ===================================================================== */
+
+.tile.wide { width: 100%; margin-bottom: 12px; }
+.tile.neutral { --t: var(--text); --tbg: var(--bg); }
+div.tile { cursor: default; }
+.progress { width: 100%; height: 6px; margin: 6px 0 4px; border-radius: 99px; background: rgba(127, 127, 127, .2); overflow: hidden; }
+.progress span { display: block; height: 100%; border-radius: 99px; background: var(--t); transition: width .3s; }
+
+/* Кружок с буквами: клиент или магазин */
+.ava {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: color-mix(in srgb, var(--btn) 16%, transparent); color: var(--btn);
+  font-size: 13px; font-weight: 700;
+}
+.ava.big { width: 46px; height: 46px; font-size: 17px; }
+.group-h { gap: 10px; align-items: center; }
+
+/* Круглые кнопки-иконки (позвонить, WhatsApp, открыть ссылку) */
+.icon-btn.soft { background: var(--bg2); color: var(--btn); min-width: 42px; }
+.icon-btn.soft .ic { width: 20px; height: 20px; }
+.icon-btn.wa-ic { color: #1faa53; }
+a.icon-btn { text-decoration: none; }
+
+.btn.ghost { background: none; color: var(--link); min-height: 44px; margin-top: 4px; }
+.btn.ghost.danger { color: var(--danger); }
+.btn.dashed { background: none; border: 1.5px dashed var(--sep); color: var(--btn); }
+.btn .ic { width: 20px; height: 20px; }
+.btn-row.tight { margin-top: 8px; }
+
+/* Шкала этапов заказа */
+.steps { display: flex; gap: 4px; margin: 12px 0 6px; }
+.steps span { flex: 1; height: 6px; border-radius: 99px; background: rgba(127, 127, 127, .2); }
+.steps span.on { background: var(--c); }
+
+/* Три цифры в ряд: сумма, оплачено, долг */
+.stats3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stats3 > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.stats3 b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Долги: строка с кнопками под ней */
+.lrow.col { flex-direction: column; align-items: stretch; gap: 0; }
+.lrow.col > .row { gap: 10px; }
+.big-debt { font-size: 17px; font-weight: 700; }
+
+/* Отметка «выкуплен» у товара */
+.mark {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--sep); color: #fff;
+}
+.mark.on { background: var(--ok); border-color: var(--ok); }
+.mark .ic { width: 15px; height: 15px; stroke-width: 3; }
+
+/* Выкупить: строка товара внутри списка */
+.list .buy-item { padding: 12px 14px; }
+.list .buy-item + .buy-item { border-top: 1px solid var(--sep); }
+.cb { display: inline-flex; align-items: center; justify-content: center; }
+.cb .ic { width: 20px; height: 20px; stroke-width: 3; }
+
+/* Заказ сохранён */
+.done-head { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 24px 10px 16px; text-align: center; }
+.done-head b { font-size: 20px; }
+.done-ic {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 64px; height: 64px; border-radius: 50%; margin-bottom: 8px;
+  background: var(--ok); color: #fff;
+}
+.done-ic .ic { width: 34px; height: 34px; stroke-width: 2.6; }
+
+/* Нижняя панель: полоска сверху и список статусов */
+.grip { width: 40px; height: 5px; border-radius: 99px; background: var(--sep); margin: -8px auto 12px; }
+.slist { border: 1px solid var(--sep); }
+.srow { width: 100%; border: 0; background: none; text-align: left; font-size: 16px; min-height: 52px; }
+.srow .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: none; }
+.srow.cur { background: var(--cbg); font-weight: 600; }
+.srow .ic { color: var(--c); }
+
+/* Форма: быстрая вставка, постоянный клиент, номер товара */
+.paste-card { background: color-mix(in srgb, var(--btn) 9%, var(--bg)); }
+.paste-btn { display: flex; align-items: center; gap: 12px; width: 100%; padding: 0; border: 0; background: none; text-align: left; }
+.paste-btn b { display: block; color: var(--btn); }
+.paste-ic {
+  flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; border-radius: 12px; background: var(--btn); color: var(--btn-text);
+}
+.chev { color: var(--hint); transition: transform .2s; }
+.chev.open { transform: rotate(90deg); }
+.known { display: flex; align-items: center; gap: 6px; color: var(--ok); font-size: 14px; font-weight: 600; }
+.known .ic { width: 18px; height: 18px; stroke-width: 2.6; }
+.num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; border-radius: 50%; background: var(--btn); color: var(--btn-text); font-size: 13px;
+}
+.tile .tile-s b { font-size: 13px; }
+
+/* ---------- «Сегодня» ---------- */
+.today-date { margin: -4px 4px 12px; color: var(--hint); font-size: 15px; }
+.today-date::first-letter { text-transform: uppercase; }
+.quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 4px; }
+.quick .btn + .btn { margin-top: 0; }
+.quick .btn { font-size: 15px; padding: 10px 8px; }
+.pill-n {
+  min-width: 20px; padding: 0 6px; border-radius: 99px; line-height: 20px;
+  background: var(--btn); color: var(--btn-text); font-size: 12px;
+}
+.section-title.row { display: flex; align-items: center; justify-content: space-between; }
+.section-title .up { text-transform: uppercase; }
+.section-title .link-btn { padding: 0; font-size: 14px; text-transform: none; letter-spacing: 0; }
+.warn-text { color: var(--danger); }
+.done-ic.sm { width: 36px; height: 36px; margin: 0; }
+.done-ic.sm .ic { width: 20px; height: 20px; }
+.mono { font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: .02em; }
+.lrow .btn.small { flex: none; }
+.ava .ic { width: 16px; height: 16px; }
+
+/* Уведомление с кнопкой «Отменить» */
+.toast { display: flex; align-items: center; gap: 12px; }
+.toast .undo {
+  flex: none; border: 0; border-radius: 8px; padding: 6px 10px;
+  background: rgba(255, 255, 255, .18); color: #fff; font-weight: 700; font-size: 14px;
+}
+
+.quick .btn { white-space: nowrap; gap: 6px; }
+
+
+/* =====================================================================
+   Шлифовка
+   ===================================================================== */
+
+/* Шрифт полегче: меньше «жирного» */
+.top h1 { font-weight: 700; letter-spacing: -.01em; }
+.tile-v { font-weight: 700; letter-spacing: -.01em; }
+.big-sum { font-weight: 700; }
+.lrow .no { font-weight: 600; }
+.section-title { font-weight: 600; letter-spacing: .04em; }
+
+/* Плитки спокойнее */
+.tile.warn { --tbg: rgba(245, 165, 36, .11); }
+.tile.danger { --tbg: rgba(229, 72, 77, .09); }
+.tile.accent { --tbg: rgba(0, 144, 255, .09); }
+.tile.ok { --tbg: rgba(48, 164, 108, .10); }
+
+/* «Требует внимания»: причина обычным цветом, без красного */
+.warn-text { color: var(--text); opacity: .75; }
+
+/* Пустые экраны: иконка в круге */
+.empty .e-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 64px; height: 64px; margin-bottom: 12px; border-radius: 50%;
+  background: var(--bg); color: var(--hint);
+}
+.empty .e-icon .ic { width: 30px; height: 30px; stroke-width: 1.6; }
+
+/* Заготовки при загрузке */
+.sk {
+  height: 14px; border-radius: 6px; margin: 4px 0;
+  background: linear-gradient(90deg, rgba(127,127,127,.14) 25%, rgba(127,127,127,.24) 50%, rgba(127,127,127,.14) 75%);
+  background-size: 200% 100%; animation: shimmer 1.2s linear infinite;
+}
+.sk.sm { height: 10px; }
+.sk.lg { height: 24px; margin-top: 8px; }
+.sk-tile { --tbg: var(--bg); min-height: 86px; }
+@keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* Переходы между экранами */
+.anim-in { animation: slideIn .2s ease-out; }
+.anim-back { animation: slideBack .2s ease-out; }
+.anim-fade { animation: fadeIn .15s ease-out; }
+@keyframes slideIn { from { opacity: 0; transform: translateX(24px); } }
+@keyframes slideBack { from { opacity: 0; transform: translateX(-24px); } }
+@keyframes fadeIn { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .anim-in, .anim-back, .anim-fade, .sheet, .sk { animation: none; }
+}
+
+/* Центральная кнопка «+» */
+.tabs .plus-tab { color: var(--hint); }
+.plus-circle {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 46px; height: 46px; margin-top: -18px; border-radius: 50%;
+  background: var(--btn); color: var(--btn-text);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--btn) 40%, transparent);
+  border: 3px solid var(--bg);
+}
+.plus-circle .ti { width: 22px; height: 22px; }
+.tabs .plus-tab.active { color: var(--btn); }
+
+/* Нажатие — лёгкое «вдавливание» кнопок и строк */
+.btn:active, .tile:active, .chip:active, .icon-btn:active { transform: scale(.97); }
+.btn, .tile, .chip, .icon-btn { transition: transform .08s; }
+
+/* Клиент в форме */
+.chips.recent { margin: 0 -14px 10px; padding-left: 14px; padding-right: 14px; }
+.chips.recent .chip { height: 38px; font-weight: 500; }
+.picked { display: flex; align-items: center; gap: 12px; }
+.picked .known { margin-top: 4px; font-size: 13px; }
+.suggest .ava { width: 32px; height: 32px; }
