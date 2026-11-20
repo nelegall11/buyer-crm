@@ -648,6 +648,20 @@ const ACTIONS = {
   },
   pasteToggle: () => { state.draft.pasteOpen = !state.draft.pasteOpen; render(); if (state.draft.pasteOpen) $('[data-f="pasteText"]').focus(); },
   parsePaste: () => applyPaste(),
+  restoreFailed: () => {
+    // Текущий черновик не теряем: если в нём что-то есть, меняем местами
+    const current = state.draft;
+    state.draft = state.failedDraft;
+    delete state.draft.failed;
+    state.failedDraft = isBlankDraft(current) ? null : current;
+    saveDraft();
+    render();
+  },
+  dropFailed: () => {
+    if (!confirm('Удалить несохранённый заказ?')) return;
+    state.failedDraft = null;
+    render();
+  },
   unpickClient: () => {
     const d = state.draft;
     d.picked = false; d.client = ''; d.phone = ''; d.who = '';
@@ -987,7 +1001,14 @@ function newOrderTab() {
   const hasEur = d.items.some(x => x.currency === '€');
   const known = d.picked ? findClient(d.client, d.phone) : null;
 
+  const failed = state.failedDraft;
   return `
+    ${failed ? `<div class="card failed-card">
+      <b>${failed.failed ? 'Не сохранился заказ' : 'Отложен черновик заказа'} для «${esc(failed.client || failed.phone || 'без имени')}»</b>
+      <div class="btn-row tight">
+        <button class="btn small primary" data-act="restoreFailed">Восстановить</button>
+        <button class="btn small" data-act="dropFailed">Удалить</button>
+      </div></div>` : ''}
     <div class="card paste-card">
       <button class="paste-btn" data-act="pasteToggle">
         <span class="paste-ic">${icon('paste')}</span>
@@ -1278,8 +1299,7 @@ async function saveOrder() {
   if (!d.paidMode) return bad('#paidSeg', 'Отметьте, сколько клиент оплатил');
   if (d.paidMode === 'custom' && !(parseNum(d.paidCustom) >= 0)) return bad('[data-f="paidCustom"]', 'Напишите сумму оплаты');
 
-  setMainProgress(true);
-  const res = await call('createOrder', {
+  const payload = {
     order: {
       client: d.client.trim() || `Клиент ${d.phone.replace(/\D/g, '').slice(-4)}`, phone: d.phone.trim(), opt: d.opt,
       markup: c.markup, rates: { usd: c.rates['$'], eur: c.rates['€'] },
@@ -1288,14 +1308,66 @@ async function saveOrder() {
       })),
       paid: c.paid, paidAll: d.paidMode === 'all',
     },
-  });
-  setMainProgress(false);
-  if (!res) return;
+  };
 
+  // Чек показываем сразу (суммы посчитаны на телефоне по той же формуле), номер подставим, когда ответит таблица
+  const preview = {
+    no: null, client: payload.order.client, phone: payload.order.phone,
+    items: filled.map(({ it, i }) => ({ link: it.link.trim(), size: it.size.trim(), qty: c.items[i].qty, price: c.items[i].price })),
+    total: c.total, paid: c.paid, debt: c.total - c.paid, profit: c.profit,
+  };
+  const savedDraft = JSON.parse(JSON.stringify(d));
+  const temp = 'new-' + Date.now();
   haptic('success');
   state.draft = newDraft();
   saveDraft();
-  openScreen({ type: 'done', no: res.orders[0].no });
+  openScreen({ type: 'done', no: null, temp, preview });
+
+  syncPending++;
+  updateSyncBadge();
+  syncQueue = syncQueue.then(async () => {
+    try {
+      const res = await api('createOrder', payload);
+      mergeOrders(res.orders);
+      if (res.settings) state.settings = res.settings;
+      const no = res.orders[0].no;
+      const screen = state.stack.find(x => x.temp === temp);
+      if (screen) { screen.no = no; delete screen.preview; }
+      if (currentScreen() !== screen) toast(`Заказ №${no} сохранён ✅`);
+    } catch (err) {
+      console.error(err);
+      onOrderFailed(savedDraft, temp, err);
+    } finally {
+      syncPending--;
+      updateSyncBadge();
+      saveCacheSoon();
+      softRender();
+    }
+  });
+}
+
+function isBlankDraft(d) {
+  return !d.client && !d.phone && !d.who && d.items.every(it => !it.link.trim() && !it.amount.trim() && !it.size.trim());
+}
+
+// Заказ не сохранился: возвращаем заполненную форму, чтобы ничего не вводить заново
+function onOrderFailed(savedDraft, temp, err) {
+  const msg = err instanceof TypeError ? 'нет связи' : (err.message || 'ошибка');
+  state.stack = state.stack.filter(x => x.temp !== temp);
+  if (isBlankDraft(state.draft)) {
+    state.draft = savedDraft;
+    saveDraft();
+    state.stack = [];
+    state.tab = 'new';
+    toast(`Заказ не сохранился (${msg}). Форма заполнена как была — нажмите «Сохранить» ещё раз`, true);
+  } else {
+    // Байер уже начал следующий заказ — не затираем его, предлагаем восстановить кнопкой
+    savedDraft.failed = true;
+    state.failedDraft = savedDraft;
+    toast(`Заказ для «${savedDraft.client || savedDraft.phone}» не сохранился (${msg}). Его можно восстановить во вкладке «Новый»`, true);
+  }
+  haptic('error');
+  render();
 }
 
 // ---------- Быстрая вставка сообщения клиента ----------
@@ -1544,21 +1616,25 @@ function orderScreen({ no }) {
 
 // ---------- Заказ сохранён ----------
 
-function doneScreen({ no }) {
-  const o = findOrder(no);
+function doneScreen(top) {
+  const pending = !top.no;
+  const o = pending ? top.preview : findOrder(top.no);
   if (!o) return emptyHtml('🤷', 'Заказ не найден');
   const url = waLink(o.phone, receiptText(o));
+  let waButton;
+  if (!o.phone) waButton = `<p class="hint" style="text-align:center">Чтобы отправить чек в WhatsApp, укажите телефон клиента</p>`;
+  else if (pending) waButton = `<button class="btn wa" disabled>${icon('chat')}Чек будет готов через пару секунд…</button>`;
+  else waButton = `<button class="btn wa" data-act="open" data-url="${esc(url)}">${icon('chat')}Отправить чек в WhatsApp</button>`;
   return `
     <div class="done-head">
-      <span class="done-ic">${icon('check')}</span>
-      <b>Заказ №${o.no} сохранён</b>
-      <span class="hint">Ваша прибыль: <span class="ok">${money(o.profit)}</span></span>
+      <span class="done-ic ${pending ? 'pending' : ''}">${icon('check')}</span>
+      <b>${pending ? 'Заказ сохраняется…' : `Заказ №${o.no} сохранён`}</b>
+      <span class="hint">${pending ? 'Номер появится через пару секунд · ' : ''}Ваша прибыль: <span class="ok">${money(o.profit)}</span></span>
     </div>
     <div class="card"><pre class="receipt">${esc(receiptText(o))}</pre></div>
-    ${url ? `<button class="btn wa" data-act="open" data-url="${esc(url)}">${icon('chat')}Отправить чек в WhatsApp</button>`
-      : `<p class="hint" style="text-align:center">Чтобы отправить чек в WhatsApp, укажите телефон клиента</p>`}
+    ${waButton}
     <button class="btn primary" data-act="newOrder">${icon('plus')}Ещё заказ</button>
-    <button class="btn" data-act="doneOpenOrder" data-no="${o.no}">Открыть заказ</button>`;
+    ${pending ? '' : `<button class="btn" data-act="doneOpenOrder" data-no="${o.no}">Открыть заказ</button>`}`;
 }
 
 // ---------- Сводка (как утренняя сводка в боте) ----------
@@ -2112,7 +2188,7 @@ function statusMessage(o) {
 function receiptText(o) {
   const lines = [];
   if (state.settings.shopName) lines.push(state.settings.shopName);
-  lines.push(`🧾 Заказ №${o.no}`, o.client, '');
+  lines.push(`🧾 Заказ №${o.no || '…'}`, o.client, '');
   o.items.forEach((x, i) => lines.push(`${i + 1}. ${itemLabel(x)} — ${money(x.price)}`));
   lines.push('', `Итого: ${money(o.total)}`, `Оплачено: ${money(o.paid)}`);
   if (o.debt > 0) lines.push(`Осталось оплатить: ${money(o.debt)}`);

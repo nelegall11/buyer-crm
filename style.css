@@ -563,3 +563,12 @@ a.icon-btn { text-decoration: none; }
   width: 12px; height: 12px; border-radius: 50%;
   border: 2px solid var(--sep); border-top-color: var(--btn); animation: spin .8s linear infinite;
 }
+
+
+/* Заказ ещё сохраняется: серая пульсирующая галочка */
+.done-ic.pending { background: var(--hint); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+.btn:disabled { opacity: .55; }
+/* Несохранённый заказ */
+.failed-card { border: 1.5px solid var(--danger); }
+.failed-card b { color: var(--danger); }
