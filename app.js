@@ -75,26 +75,91 @@ function start() {
   $('#mainBtn').addEventListener('click', onMainButton);
   document.addEventListener('click', onClick);
   document.addEventListener('input', onInput);
+  // Вернулись в приложение спустя 5+ минут — тихо обновляем данные
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && lastLoad && Date.now() - lastLoad > 5 * 60000 && !syncPending) loadData();
+  });
   loadData();
 }
 
+// Данные с прошлого открытия хранятся на телефоне — приложение открывается мгновенно,
+// а свежие данные из таблицы подгружаются в фоне
+const CACHE_KEY = 'buyercrm-cache:' + API_URL;
+let lastLoad = 0;
+
+function saveCache() {
+  if (DEMO) return;
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify({
+      at: Date.now(),
+      d: {
+        settings: state.settings, statuses: state.statuses, texts: state.texts, orders: state.orders,
+        clients: state.clients, archived: state.archived, monthArchived: state.monthArchived,
+      },
+    }));
+  } catch (e) { /* хранилище недоступно или переполнено — не страшно */ }
+}
+
+let cacheTimer = null;
+function saveCacheSoon() {
+  clearTimeout(cacheTimer);
+  cacheTimer = setTimeout(saveCache, 500);
+}
+
+function loadCache() {
+  if (DEMO) return null;
+  try {
+    const c = JSON.parse(localStorage.getItem(CACHE_KEY));
+    return c && c.d && Array.isArray(c.d.orders) ? c : null;
+  } catch (e) { return null; }
+}
+
+function applyAll(d) {
+  state.settings = d.settings;
+  state.statuses = d.statuses;
+  state.texts = d.texts;
+  applyInit(d);
+  if (!state.draft) state.draft = loadDraft() || newDraft();
+}
+
 async function loadData() {
-  state.loading = true;
+  const cached = state.orders.length ? null : loadCache();
+  if (cached) {
+    applyAll(cached.d);
+    state.loading = false;
+    state.refreshing = true;
+  } else if (!state.orders.length) {
+    state.loading = true;
+  } else {
+    state.refreshing = true;
+  }
   state.error = null;
+  updateSyncBadge();
   render();
+
   try {
     const d = await api('init');
-    state.settings = d.settings;
-    state.statuses = d.statuses;
-    state.texts = d.texts;
-    applyInit(d);
-    state.draft = loadDraft() || newDraft();
+    if (syncPending) {
+      // Пока грузили, байер что-то поменял — не затираем, просто дождёмся следующего обновления
+    } else {
+      applyAll(d);
+      saveCache();
+    }
+    lastLoad = Date.now();
   } catch (err) {
-    state.error = err.message || String(err);
-    state.errorCode = err.code || (err instanceof TypeError ? 'network' : '');
+    const denied = err.code === 'auth' || err.code === 'forbidden';
+    if (state.orders.length && !denied) {
+      toast('Нет связи — показаны данные с прошлого раза', true);
+    } else {
+      state.error = err.message || String(err);
+      state.errorCode = err.code || (err instanceof TypeError ? 'network' : '');
+      if (denied) { state.orders = []; try { localStorage.removeItem(CACHE_KEY); } catch (e) { /* ничего */ } }
+    }
   }
   state.loading = false;
-  render();
+  state.refreshing = false;
+  updateSyncBadge();
+  if (state.error) render(); else softRender();
 }
 
 function applyInit(d) {
@@ -149,6 +214,7 @@ async function call(action, data) {
     const res = await api(action, data);
     if (res && res.orders) mergeOrders(res.orders);
     if (res && res.settings) state.settings = res.settings;
+    saveCacheSoon();
     return res;
   } catch (err) {
     console.error(err);
@@ -167,6 +233,70 @@ function mergeOrders(list) {
     const i = state.orders.findIndex(x => x.no === o.no);
     if (i >= 0) state.orders[i] = o; else state.orders.push(o);
   });
+}
+
+// =====================================================================
+//  МГНОВЕННЫЙ ОТКЛИК
+//  Изменение сразу видно на экране, а в таблицу уходит в фоне — строго по очереди.
+//  Если сохранить не удалось — возвращаем заказ как было и показываем ошибку.
+// =====================================================================
+
+let syncQueue = Promise.resolve();
+let syncPending = 0;
+
+// apply(o) меняет заказ на телефоне; action/data — что отправить в таблицу. Возвращает «как было» (для «Отменить»).
+function mutate(nos, apply, action, data) {
+  const before = snapshot(nos);
+  nos.forEach(no => { const o = findOrder(no); if (o) apply(o); });
+  saveCacheSoon();
+  syncPending++;
+  updateSyncBadge();
+  syncQueue = syncQueue.then(async () => {
+    try {
+      const res = await api(action, data);
+      if (res && res.orders) mergeOrders(res.orders);
+    } catch (err) {
+      console.error(err);
+      mergeOrders(before);
+      const msg = err instanceof TypeError ? 'нет связи' : (err.message || 'ошибка');
+      toast(`Не сохранилось (${msg}). Вернули как было`, true);
+      haptic('error');
+    } finally {
+      syncPending--;
+      updateSyncBadge();
+      saveCacheSoon();
+      softRender();
+    }
+  });
+  return before;
+}
+
+// Перерисовать экран, но не мешать, если байер сейчас что-то печатает
+function softRender() {
+  const a = document.activeElement;
+  if (a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && $('#view').contains(a)) return;
+  render();
+}
+
+// Значок «сохраняю…» в шапке. Пока есть несохранённое, Telegram спросит перед закрытием.
+function updateSyncBadge() {
+  const b = $('#syncBadge');
+  if (b) {
+    b.hidden = !syncPending && !state.refreshing;
+    b.querySelector('span').textContent = syncPending ? 'сохраняю' : 'обновляю';
+  }
+  if (IN_TG && tg.isVersionAtLeast && tg.isVersionAtLeast('6.2')) {
+    if (syncPending) tg.enableClosingConfirmation(); else tg.disableClosingConfirmation();
+  }
+}
+
+// Те же правила, что в таблице: смена статуса запоминает время, «Выкуплен» отмечает все товары
+function setLocalStatus(o, i, track) {
+  const status = state.statuses[i];
+  if (o.status !== status) o.statusAt = new Date().toISOString();
+  o.status = status;
+  if (track) o.track = track;
+  if (i === S.BOUGHT) o.items.forEach(x => { x.bought = true; });
 }
 
 // =====================================================================
@@ -375,13 +505,11 @@ const ACTIONS = {
   undo: () => doUndo(),
 
   // «Требует внимания»: написать клиенту и убрать заказ из списка на 2 дня
-  attnWrite: async d => {
+  attnWrite: d => {
     openLink(d.url);
-    try {
-      const res = await api('snooze', { no: Number(d.no), days: 2 });
-      mergeOrders(res.orders);
-      render();
-    } catch (e) { /* не страшно: просто останется в списке */ }
+    const no = Number(d.no);
+    mutate([no], o => { o.snoozeUntil = new Date(Date.now() + 2 * 86400000).toISOString(); }, 'snooze', { no, days: 2 });
+    render();
   },
 
   // Пришла посылка
@@ -442,9 +570,12 @@ const ACTIONS = {
   bulkPick: d => askStatus(state.selected.slice(), Number(d.i)),
   trackSave: d => applyStatus(JSON.parse(d.nos), Number(d.i), ($('#trackInput').value || '').trim()),
   trackSkip: d => applyStatus(JSON.parse(d.nos), Number(d.i), ''),
-  saveTrack: async d => {
-    const res = await call('saveTrack', { no: Number(d.no), track: $('#trackEdit').value });
-    if (res) { toast('Трек-номер сохранён ✅'); render(); }
+  saveTrack: d => {
+    const no = Number(d.no);
+    const track = ($('#trackEdit').value || '').trim();
+    mutate([no], o => { o.track = track; }, 'saveTrack', { no, track });
+    toast('Трек-номер сохранён ✅');
+    render();
   },
 
   // Оплата
@@ -460,15 +591,20 @@ const ACTIONS = {
   },
 
   // Выкупить
-  buyToggle: async d => {
+  buyToggle: d => {
     const no = Number(d.no);
-    const before = findOrder(no);
-    const item = before.items.find(x => x.id === Number(d.id));
-    const res = await call('setBought', { no, itemId: item.id, bought: !item.bought });
-    if (!res) return;
-    const after = findOrder(no);
+    const id = Number(d.id);
+    const was = statusIdx(findOrder(no).status);
+    const bought = !findOrder(no).items.find(x => x.id === id).bought;
+    mutate([no], o => {
+      o.items.find(x => x.id === id).bought = bought;
+      // Все товары отмечены → «Выкуплен»; сняли галочку у выкупленного → снова «Оплачен»
+      const i = statusIdx(o.status);
+      if (i === S.PAID && o.items.every(x => x.bought)) setLocalStatus(o, S.BOUGHT);
+      else if (i === S.BOUGHT && !bought) setLocalStatus(o, S.PAID);
+    }, 'setBought', { no, itemId: id, bought });
     haptic('light');
-    if (statusIdx(after.status) === S.BOUGHT && statusIdx(before.status) !== S.BOUGHT) {
+    if (statusIdx(findOrder(no).status) === S.BOUGHT && was !== S.BOUGHT) {
       if (!state.justBought.includes(no)) state.justBought.push(no);
       toast(`Заказ №${no} полностью выкуплен ✅`);
       haptic('success');
@@ -1521,19 +1657,16 @@ function askStatus(nos, i) {
   setTimeout(() => $('#trackInput') && $('#trackInput').focus(), 100);
 }
 
-async function applyStatus(nos, i, track) {
-  const snap = snapshot(nos);
-  const res = await call('setStatus', { nos, status: state.statuses[i], track });
-  if (!res) return;
+function applyStatus(nos, i, track) {
+  const snap = mutate(nos, o => setLocalStatus(o, i, track), 'setStatus', { nos, status: state.statuses[i], track });
   haptic('success');
   closeSheet(false);
   state.selecting = false;
   state.selected = [];
   render();
-
-  if (nos.length === 1) return offerUndo(`№${nos[0]} → ${state.statuses[i]}`, snap);
-  offerUndo(`${ordersWord(nos.length)} → ${state.statuses[i]}`, snap);
-  showNotifySheet(res.orders, `${ordersWord(nos.length)} → ${state.statuses[i]}`);
+  const text = nos.length === 1 ? `№${nos[0]} → ${state.statuses[i]}` : `${ordersWord(nos.length)} → ${state.statuses[i]}`;
+  offerUndo(text, snap);
+  if (nos.length > 1) showNotifySheet(nos.map(findOrder).filter(Boolean), text);
 }
 
 // Несколько заказов поменяли статус: кнопки WhatsApp для каждого клиента
@@ -1567,14 +1700,16 @@ function openPaymentSheet(no) {
     ${remind ? `<button class="btn wa" data-act="open" data-url="${esc(remind)}" style="margin-top:16px">${icon('chat')}Напомнить в WhatsApp</button>` : ''}`);
 }
 
-async function addPayment(no, amount) {
-  const snap = snapshot([no]);
-  const res = await call('addPayment', { no, amount });
-  if (!res) return;
+function addPayment(no, amount) {
+  const snap = mutate([no], o => {
+    o.paid += amount;
+    o.debt = o.total - o.paid;
+    if (statusIdx(o.status) === S.WAIT) setLocalStatus(o, S.PAID);
+  }, 'addPayment', { no, amount });
   haptic('success');
   closeSheet(false);
-  const o = findOrder(no);
   render();
+  const o = findOrder(no);
   offerUndo(o.debt > 0 ? `Внесено ${money(amount)}. Осталось ${money(o.debt)}` : 'Долг закрыт ✅', snap);
 }
 
@@ -1594,13 +1729,14 @@ function offerUndo(text, snap) {
   toast(text, false, !!undoSnap);
 }
 
-async function doUndo() {
+function doUndo() {
   const snap = undoSnap;
   undoSnap = null;
   hideToast();
   if (!snap) return;
-  const res = await call('restore', { orders: snap });
-  if (!res) return;
+  mutate(snap.map(o => o.no), o => {
+    Object.assign(o, JSON.parse(JSON.stringify(snap.find(x => x.no === o.no))));
+  }, 'restore', { orders: snap });
   haptic('light');
   closeSheet(false);
   render();
@@ -1765,18 +1901,16 @@ function parcelScreen(top) {
       </div>` : emptyHtml('📭', 'Посылок в пути нет', 'Здесь появятся заказы со статусом «В пути» и трек-номером')}`;
 }
 
-async function applyParcel() {
+function applyParcel() {
   const top = currentScreen();
   const nos = top.sel.slice();
   if (!nos.length) return;
-  const snap = snapshot(nos);
-  const res = await call('setStatus', { nos, status: state.statuses[S.ARRIVED], track: '' });
-  if (!res) return;
+  const snap = mutate(nos, o => setLocalStatus(o, S.ARRIVED), 'setStatus', { nos, status: state.statuses[S.ARRIVED], track: '' });
   haptic('success');
   state.stack.pop();
   render();
   offerUndo(`${ordersWord(nos.length)} → ${state.statuses[S.ARRIVED]}`, snap);
-  showNotifySheet(res.orders, `Посылка пришла: ${ordersWord(nos.length)}`);
+  showNotifySheet(nos.map(findOrder).filter(Boolean), `Посылка пришла: ${ordersWord(nos.length)}`);
 }
 
 // =====================================================================
@@ -1852,7 +1986,7 @@ function handoverScreen(top) {
         <span class="tile-s">Можно выдавать</span></div>`}`;
 }
 
-async function applyHandover() {
+function applyHandover() {
   const top = currentScreen();
   const nos = handoverSel(top);
   if (!nos.length) return;
@@ -1863,14 +1997,16 @@ async function applyHandover() {
     if (seg) { seg.classList.add('bad'); seg.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
     return;
   }
-  const snap = snapshot(nos);
-  const res = await call('handover', { nos, paid: top.paid === true });
-  if (!res) return;
+  const paid = top.paid === true;
+  const snap = mutate(nos, o => {
+    if (paid && o.debt > 0) { o.paid = o.total; o.debt = 0; }
+    setLocalStatus(o, S.DONE);
+  }, 'handover', { nos, paid });
   haptic('success');
   state.stack.pop();
   render();
   offerUndo(`Выдано: ${ordersWord(nos.length)}`, snap);
-  const o = res.orders[0];
+  const o = findOrder(nos[0]);
   const thanks = waLink(o.phone, statusMessage(o));
   if (thanks) {
     openSheet('thanks', `
