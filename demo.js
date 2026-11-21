@@ -10,7 +10,7 @@
 // =====================================================================
 
 const DemoServer = (() => {
-  const KEY = 'buyercrm-demo-v8';
+  const KEY = 'buyercrm-demo-v9';
   const HISTORY_COUNT = 220; // старые выданные заказы за год — для вкладки «Бизнес»
   const ORDER_COUNT = 100;
   const ARCHIVE_DAYS = 30; // выданные заказы старше 30 дней без долга не загружаем сразу
@@ -22,6 +22,7 @@ const DemoServer = (() => {
     retail: 25,
     opt: 15,
     round: 100,
+    goal: 4500000, // цель выручки на месяц
     // Через сколько дней заказ попадает в «Требует внимания»
     attention: { wait: 3, paid: 3, way: 25, arrived: 5 },
   };
@@ -157,7 +158,25 @@ const DemoServer = (() => {
       recalc(o);
       data.orders.push(o);
     }
+    data.expenses = buildExpenses(r);
     return data;
+  }
+
+  // Выдуманные расходы за год: доставка форвардера, комиссии, упаковка, реклама
+  function buildExpenses(r) {
+    const list = [];
+    const add = (daysAgo, amount, category, note) => {
+      const d = new Date(Date.now() - daysAgo * 86400000);
+      d.setHours(12, 0, 0, 0);
+      list.push({ id: 'e' + list.length, date: d.toISOString(), amount: Math.round(amount / 100) * 100, category, note });
+    };
+    for (let d = 360; d >= 0; d -= 4 + Math.floor(r() * 4)) add(d, 35000 + r() * (d < 90 ? 70000 : 40000), 'Доставка', 'Посылка от форвардера');
+    for (let m = 0; m < 12; m++) {
+      add(m * 30 + 2, 15000 + r() * 30000, 'Комиссии', 'Kaspi и банк');
+      add(m * 30 + 9, 8000 + r() * 9000, 'Упаковка', 'Пакеты и коробки');
+      if (m < 6) add(m * 30 + 15, 30000 + r() * 30000, 'Реклама', 'Реклама в Instagram');
+    }
+    return list;
   }
 
   // Та же формула, что в боте: себестоимость × (1 + наценка) с округлением вверх
@@ -369,7 +388,24 @@ const DemoServer = (() => {
 
     // Для вкладки «Бизнес»: короткая строка по каждому заказу, включая старые
     analytics() {
-      return { rows: db.orders.map(analyticsRow) };
+      return { rows: db.orders.map(analyticsRow), expenses: db.expenses || [] };
+    },
+
+    addExpense({ expense }) {
+      if (!(Number(expense.amount) > 0)) throw new Error('Сумма расхода должна быть больше нуля');
+      db.expenses = db.expenses || [];
+      db.expenses.push({ id: expense.id, date: expense.date || new Date().toISOString(), amount: Number(expense.amount), category: expense.category || 'Другое', note: expense.note || '' });
+      return { id: expense.id };
+    },
+
+    deleteExpense({ id }) {
+      db.expenses = (db.expenses || []).filter(e => e.id !== id);
+      return { ok: true };
+    },
+
+    setGoal({ goal }) {
+      db.settings.goal = Math.max(0, Math.round(Number(goal) || 0));
+      return { goal: db.settings.goal };
     },
 
     resetDemo() {

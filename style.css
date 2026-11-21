@@ -604,3 +604,23 @@ a.icon-btn { text-decoration: none; }
 
 .hbar .row > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hbar .row > span:last-child { flex: none; white-space: nowrap; }
+
+
+/* Цель на месяц */
+.goal-card { cursor: pointer; }
+.goal-nums { margin: 6px 0 8px; font-size: 15px; }
+.goal-nums b { font-size: 22px; }
+.goal-bar { position: relative; height: 10px; border-radius: 99px; background: var(--soft); margin-bottom: 8px; }
+.goal-bar span { display: block; height: 100%; border-radius: 99px; background: var(--ok); }
+.goal-bar.warn span { background: #f5a524; }
+/* Отметка «где мы должны быть сегодня» */
+.goal-bar i { position: absolute; top: -3px; width: 2px; height: 16px; background: var(--text); opacity: .45; border-radius: 1px; }
+.small .up { color: var(--ok); font-weight: 700; }
+.small .down { color: #d48806; font-weight: 700; }
+
+/* Долги по давности и расходы */
+.hbar .track span.warn { background: #f5a524; }
+.hbar .track span.danger { background: var(--danger); }
+.hbar .track span.muted { background: var(--hint); }
+.wrap-chips { flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; }
+.del-btn { min-width: 34px; height: 34px; font-size: 14px; color: var(--hint); }

@@ -506,6 +506,24 @@ const ACTIONS = {
   bizBar: d => { state.bizSel = Number(d.i); render(); },
   bizTable: () => { state.bizTable = !state.bizTable; render(); },
   bizRetry: () => { state.analyticsError = null; render(); },
+  goalSheet: () => openGoalSheet(),
+  goalSave: () => {
+    const n = Math.round(parseNum($('#goalInput').value) || 0);
+    if (!(n > 0)) { $('#goalInput').classList.add('bad'); $('#goalInput').focus(); return; }
+    saveGoal(n);
+  },
+  goalClear: () => saveGoal(0),
+  expenseSheet: () => openExpenseSheet(),
+  expenseCat: d => {
+    document.querySelectorAll('[data-act="expenseCat"]').forEach(b => b.classList.toggle('on', b.dataset.v === d.v));
+    $('[data-act="expenseSave"]').dataset.cat = d.v;
+  },
+  expenseSave: d => {
+    const n = parseNum($('#expAmount').value);
+    if (!(n > 0)) { $('#expAmount').classList.add('bad'); $('#expAmount').focus(); return; }
+    addExpense(Math.round(n), d.cat, ($('#expNote').value || '').trim());
+  },
+  expenseDelete: d => deleteExpense(d.id),
   openBuy: () => { state.justBought = []; openScreen({ type: 'buy' }); },
   openAttention: () => openScreen({ type: 'attention' }),
   openHandoverList: () => openScreen({ type: 'handoverList' }),
@@ -1518,7 +1536,7 @@ function debtsTab() {
             <div class="row" data-act="openOrder" data-no="${o.no}">
               <div class="grow">
                 <div class="l1"><span class="name ellipsis">${esc(o.client)}</span></div>
-                <div class="l2">№${o.no} · <span class="st">${esc(o.status)}</span> · из ${money(o.total)}</div>
+                <div class="l2">№${o.no} · <span class="st">${esc(o.status)}</span> · ${daysSince(o.date) >= 30 ? `<span class="debt">${daysWord(daysSince(o.date))}</span>` : daysWord(daysSince(o.date))}</div>
               </div>
               <div class="debt money big-debt">${money(o.debt)}</div>
             </div>
@@ -2172,21 +2190,48 @@ async function loadAnalytics() {
   if (!state.analytics && !DEMO) {
     try {
       const c = JSON.parse(localStorage.getItem(ANALYTICS_KEY));
-      if (c && Array.isArray(c.rows)) state.analytics = c.rows;
+      if (c && Array.isArray(c.rows)) { state.analytics = c.rows; state.expenses = c.expenses || []; }
     } catch (e) { /* нет сохранённого — подождём сервер */ }
   }
   try {
     const res = await api('analytics');
     state.analytics = res.rows;
+    state.expenses = res.expenses || [];
     state.analyticsError = null;
-    if (!DEMO) {
-      try { localStorage.setItem(ANALYTICS_KEY, JSON.stringify({ at: Date.now(), rows: res.rows })); } catch (e) { /* не страшно */ }
-    }
+    saveAnalyticsCache();
   } catch (err) {
     if (!state.analytics) state.analyticsError = err instanceof TypeError ? 'Нет связи' : (err.message || 'Ошибка');
   }
   state.analyticsLoading = false;
   if (state.tab === 'biz' && !state.stack.length) softRender();
+}
+
+function saveAnalyticsCache() {
+  if (DEMO || !state.analytics) return;
+  try {
+    localStorage.setItem(ANALYTICS_KEY, JSON.stringify({ at: Date.now(), rows: state.analytics, expenses: state.expenses || [] }));
+  } catch (e) { /* не страшно */ }
+}
+
+// Отправка в таблицу в фоне — для действий, не связанных с одним заказом (расходы, цель)
+function queueSync(action, data, onFail) {
+  syncPending++;
+  updateSyncBadge();
+  syncQueue = syncQueue.then(async () => {
+    try {
+      await api(action, data);
+    } catch (err) {
+      console.error(err);
+      if (onFail) onFail();
+      toast(`Не сохранилось (${err instanceof TypeError ? 'нет связи' : (err.message || 'ошибка')}). Вернули как было`, true);
+      haptic('error');
+    } finally {
+      syncPending--;
+      updateSyncBadge();
+      saveAnalyticsCache();
+      softRender();
+    }
+  });
 }
 
 function orderToRow(o) {
@@ -2285,6 +2330,8 @@ function bizTab() {
   return `
     <div class="chips" style="padding-top:4px">${chips}</div>
 
+    ${bizGoalHtml(rows)}
+
     <div class="tiles">
       <div class="tile neutral kpi"><span class="tile-l">Выручка</span><span class="tile-v">${moneyShort(rev)}</span>${deltaHtml(rev, revPrev, P.prev)}</div>
       <div class="tile neutral kpi"><span class="tile-l">Прибыль · ${margin}%</span><span class="tile-v ok">${moneyShort(prof)}</span>${deltaHtml(prof, profPrev, P.prev)}</div>
@@ -2301,7 +2348,9 @@ function bizTab() {
       <div id="bizChart">${bizChartHtml(cur)}</div>
     </div>
 
+    ${bizNetHtml(prof, from)}
     ${bizMoneyHtml()}
+    ${bizDebtAgeHtml()}
     ${bizFunnelHtml()}
     ${bizClientsHtml(rows, cur, from)}
     ${bizShopsHtml(cur)}
@@ -2365,6 +2414,160 @@ function bizChartHtml(cur) {
         <text x="${padL - 6}" y="${y(t) + 4}" class="tick" text-anchor="end">${metric === 'orders' ? Math.round(t) : compactNum(t)}</text>`).join('')}
       ${bars}
     </svg>`;
+}
+
+// ---------- 1. Цель на месяц и прогноз ----------
+
+function bizGoalHtml(rows) {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const dayNo = now.getDate();
+  const mtd = sumBy(rows.filter(r => new Date(r.date).getTime() >= monthStart), 'total');
+  // Прогноз: если продолжать в том же темпе, сколько выйдет к концу месяца
+  const forecast = Math.round(mtd / dayNo * daysInMonth);
+  const goal = Number(state.settings.goal) || 0;
+  const monthName = now.toLocaleString('ru-RU', { month: 'long' });
+  if (!goal) {
+    return `<div class="card goal-card row between">
+      <div><b>Цель на ${esc(monthName)}</b><div class="hint small">Сейчас ${moneyShort(mtd)}, при таком темпе — ~${moneyShort(forecast)}</div></div>
+      <button class="btn small primary" data-act="goalSheet">Поставить</button></div>`;
+  }
+  const pct = Math.min(100, Math.round(mtd / goal * 100));
+  const fpct = Math.round(forecast / goal * 100);
+  const onTrack = forecast >= goal;
+  const need = Math.max(0, goal - mtd);
+  const daysLeft = daysInMonth - dayNo;
+  return `
+    <div class="card goal-card" data-act="goalSheet">
+      <div class="row between"><b>Цель на ${esc(monthName)}</b><span class="hint small">${daysWord(daysLeft)} до конца</span></div>
+      <div class="goal-nums"><b class="money">${moneyShort(mtd)}</b> <span class="hint">из ${moneyShort(goal)}</span></div>
+      <div class="goal-bar ${onTrack ? 'ok' : 'warn'}"><span style="width:${pct}%"></span><i style="left:${Math.min(100, Math.round(dayNo / daysInMonth * 100))}%"></i></div>
+      <div class="small">${onTrack
+        ? `<span class="up">✓ Успеваете:</span> при таком темпе выйдет ~${moneyShort(forecast)} (${fpct}% цели)`
+        : `<span class="down">Не успеваете:</span> при таком темпе ~${moneyShort(forecast)} (${fpct}%). Нужно ещё ${moneyShort(need)}${daysLeft ? ` — ~${moneyShort(Math.ceil(need / daysLeft / 100) * 100)} в день` : ''}`}</div>
+    </div>`;
+}
+
+function openGoalSheet() {
+  const goal = Number(state.settings.goal) || 0;
+  openSheet('goal', `
+    <h3>Цель выручки на месяц</h3>
+    <p class="hint" style="margin-top:-6px">Приложение покажет, успеваете ли вы, и сколько нужно продавать в день.</p>
+    <input id="goalInput" class="input" inputmode="numeric" placeholder="Например, 5 000 000" value="${goal ? esc(String(goal)) : ''}">
+    <button class="btn primary" data-act="goalSave" style="margin-top:10px">Сохранить</button>
+    ${goal ? `<button class="btn ghost danger" data-act="goalClear">Убрать цель</button>` : ''}`);
+  setTimeout(() => $('#goalInput') && $('#goalInput').focus(), 100);
+}
+
+function saveGoal(value) {
+  const before = state.settings.goal;
+  state.settings.goal = value;
+  closeSheet(false);
+  render();
+  toast(value ? `Цель: ${money(value)}` : 'Цель убрана');
+  queueSync('setGoal', { goal: value }, () => { state.settings.goal = before; });
+  saveCacheSoon();
+}
+
+// ---------- 2. Возраст долгов: чем старше долг, тем меньше шанс его получить ----------
+
+function bizDebtAgeHtml() {
+  const list = debtOrders();
+  if (!list.length) return '';
+  const groups = [
+    { label: 'До недели', test: d => d < 7, cls: '' },
+    { label: '1–4 недели', test: d => d >= 7 && d < 30, cls: 'warn' },
+    { label: 'Больше месяца', test: d => d >= 30, cls: 'danger' },
+  ].map(g => {
+    const os = list.filter(o => g.test(daysSince(o.date)));
+    return { ...g, n: os.length, sum: os.reduce((a, o) => a + o.debt, 0), clients: groupByClient(os).length };
+  });
+  const max = Math.max(...groups.map(g => g.sum), 1);
+  const old = groups[2];
+  return `
+    <div class="section-title">Долги по давности</div>
+    <div class="card hbars">
+      ${groups.map(g => `
+        <div class="hbar" data-act="tabDebts">
+          <div class="row between"><span>${g.label}</span>
+            <span class="small"><b class="money">${money(g.sum)}</b> <span class="hint">· ${ordersWord(g.n)}</span></span></div>
+          <div class="track"><span class="${g.cls}" style="width:${Math.round(g.sum / max * 100)}%"></span></div>
+        </div>`).join('')}
+      ${old.n ? `<button class="btn small" data-act="tabDebts" style="width:100%">${icon('chat')}Напомнить ${old.clients} ${old.clients === 1 ? 'клиенту' : 'клиентам'} с долгом больше месяца</button>` : ''}
+    </div>`;
+}
+
+// ---------- 3. Расходы и чистая прибыль ----------
+
+const EXPENSE_CATEGORIES = ['Доставка', 'Комиссии', 'Упаковка', 'Реклама', 'Другое'];
+
+function bizNetHtml(profit, from) {
+  const exp = (state.expenses || []).filter(e => new Date(e.date).getTime() >= from)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+  const total = exp.reduce((a, e) => a + e.amount, 0);
+  const net = profit - total;
+  const byCat = EXPENSE_CATEGORIES.map(c => ({ c, sum: exp.filter(e => e.category === c).reduce((a, e) => a + e.amount, 0) }))
+    .filter(x => x.sum > 0).sort((a, b) => b.sum - a.sum);
+  const max = byCat.length ? byCat[0].sum : 1;
+  return `
+    <div class="section-title row between" style="text-transform:none"><span class="up">Чистая прибыль</span>
+      <button class="link-btn" data-act="expenseSheet">${icon('plus')}Расход</button></div>
+    <div class="card">
+      <div class="lines">
+        <div><span>Прибыль с наценки</span><span class="money">${money(profit)}</span></div>
+        <div><span>Расходы</span><span class="money">− ${money(total)}</span></div>
+        <div><span class="big">Чистая прибыль</span><b class="big money ${net >= 0 ? 'ok' : 'debt'}">${money(net)}</b></div>
+      </div>
+      ${byCat.length ? `<div class="hbars" style="margin-top:12px">${byCat.map(x => `
+        <div class="hbar"><div class="row between"><span>${esc(x.c)}</span><span class="small money">${money(x.sum)}</span></div>
+          <div class="track"><span class="muted" style="width:${Math.round(x.sum / max * 100)}%"></span></div></div>`).join('')}</div>`
+        : `<p class="hint small" style="margin:10px 0 0">Добавляйте расходы — доставку форвардера, комиссии, упаковку, рекламу, — и здесь будет видно, сколько вы зарабатываете на самом деле.</p>`}
+      <button class="btn primary" data-act="expenseSheet" style="margin-top:12px">${icon('plus')}Добавить расход</button>
+    </div>
+    ${exp.length ? `<div class="list">${exp.slice(0, 5).map(e => `
+      <div class="lrow">
+        <div class="grow">
+          <div class="l1"><span class="name ellipsis">${esc(e.note || e.category)}</span></div>
+          <div class="l2">${esc(e.category)} · ${fmtDate(e.date)}</div>
+        </div>
+        <b class="money">${money(e.amount)}</b>
+        <button class="icon-btn soft del-btn" data-act="expenseDelete" data-id="${esc(e.id)}" aria-label="Удалить расход">✕</button>
+      </div>`).join('')}</div>` : ''}`;
+}
+
+function openExpenseSheet(category) {
+  const cat = category || state.lastExpenseCat || 'Доставка';
+  openSheet('expense', `
+    <h3>Новый расход</h3>
+    <input id="expAmount" class="input" inputmode="decimal" placeholder="Сумма, ₸">
+    <div class="chips wrap-chips" style="margin:10px 0 0">${EXPENSE_CATEGORIES.map(c =>
+      `<button class="chip ${c === cat ? 'on' : ''}" data-act="expenseCat" data-v="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    <input id="expNote" class="input" placeholder="Комментарий (необязательно)" style="margin-top:4px" autocomplete="off">
+    <button class="btn primary" data-act="expenseSave" data-cat="${esc(cat)}" style="margin-top:10px">Сохранить</button>`);
+  setTimeout(() => $('#expAmount') && $('#expAmount').focus(), 100);
+}
+
+function addExpense(amount, category, note) {
+  const e = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    date: new Date().toISOString(), amount, category, note,
+  };
+  state.expenses = (state.expenses || []).concat(e);
+  state.lastExpenseCat = category;
+  closeSheet(false);
+  render();
+  haptic('success');
+  toast(`Расход ${money(amount)} записан`);
+  queueSync('addExpense', { expense: e }, () => { state.expenses = state.expenses.filter(x => x.id !== e.id); });
+}
+
+function deleteExpense(id) {
+  const e = (state.expenses || []).find(x => x.id === id);
+  if (!e || !confirm(`Удалить расход ${money(e.amount)} (${e.note || e.category})?`)) return;
+  state.expenses = state.expenses.filter(x => x.id !== id);
+  render();
+  queueSync('deleteExpense', { id }, () => { state.expenses = state.expenses.concat(e); });
 }
 
 // ---------- Деньги прямо сейчас ----------
