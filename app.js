@@ -62,8 +62,29 @@ const $ = sel => document.querySelector(sel);
 //  ЗАПУСК
 // =====================================================================
 
+// Оформление выбирается на этом телефоне (⚙️ Настройки → Оформление) и хранится в нём же
+const PALETTES = [
+  ['petrol', 'Петроль', '#1f6f78'], ['graphite', 'Графит', '#1f1f1f'], ['sage', 'Шалфей', '#5b7a5a'],
+  ['rose', 'Пыльная роза', '#b06a72'], ['indigo', 'Индиго', '#4a56c4'], ['sand', 'Песок', '#a8743a'],
+];
+const LOOK_KEY = 'buyercrm-look';
+
+function getLook() {
+  try { return Object.assign({ palette: 'petrol', density: 'cozy' }, JSON.parse(localStorage.getItem(LOOK_KEY)) || {}); }
+  catch (e) { return { palette: 'petrol', density: 'cozy' }; }
+}
+
+function setLook(patch) {
+  const look = Object.assign(getLook(), patch);
+  try { localStorage.setItem(LOOK_KEY, JSON.stringify(look)); } catch (e) { /* не запомнится — не страшно */ }
+  applyTheme();
+}
+
 // Светлая или тёмная тема — как в Telegram (в браузере — как в системе)
 function applyTheme() {
+  const look = getLook();
+  document.documentElement.dataset.palette = look.palette;
+  document.documentElement.dataset.density = look.density;
   const dark = IN_TG && tg.colorScheme ? tg.colorScheme === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   if (IN_TG) {
@@ -71,7 +92,7 @@ function applyTheme() {
     const page = css.getPropertyValue('--bg2').trim();
     try { tg.setHeaderColor(page); tg.setBackgroundColor(page); } catch (e) { /* старые версии Telegram */ }
     try { tg.setBottomBarColor && tg.setBottomBarColor(css.getPropertyValue('--bg').trim()); } catch (e) { /* нет — не страшно */ }
-    try { tg.MainButton.setParams({ color: css.getPropertyValue('--btn').trim(), text_color: '#ffffff' }); } catch (e) { /* старые версии */ }
+    try { tg.MainButton.setParams({ color: css.getPropertyValue('--btn').trim(), text_color: css.getPropertyValue('--btn-text').trim() || '#ffffff' }); } catch (e) { /* старые версии */ }
   }
 }
 
@@ -549,6 +570,8 @@ const ACTIONS = {
       },
     });
   },
+  lookPalette: d => { setLook({ palette: d.v }); render(); haptic('light'); },
+  lookDensity: d => { setLook({ density: d.v }); render(); },
   textOpen: d => { const t = currentScreen(); t.open = t.open === d.k ? null : d.k; render(); },
   textReset: d => {
     const t = currentScreen();
@@ -2933,7 +2956,7 @@ async function copyText(text) {
 // Страница лежит рядом с приложением: .../track.html?api=...&t=КОД (в демо — ?demo=1&t=КОД)
 function trackUrl(token) {
   const base = location.href.split(/[?#]/)[0].replace(/[^/]*$/, '');
-  return base + 'track.html?' + (DEMO ? 'demo=1' : 'api=' + encodeURIComponent(API_URL)) + '&t=' + token;
+  return base + 'track.html?' + (DEMO ? 'demo=1' : 'api=' + encodeURIComponent(API_URL)) + '&t=' + token + '&p=' + getLook().palette;
 }
 
 async function shareTrackLink(no) {
@@ -3160,7 +3183,19 @@ function settingsScreen(t) {
       <input class="input" data-sa="${key}" inputmode="numeric" value="${esc(f.attention[key])}"></div>`;
   const keys = Object.keys(TEXT_INFO).filter(k => f.texts[k] !== undefined || (state.defaultTexts || {})[k]);
 
+  const look = getLook();
   return `
+    <div class="section-title">Оформление</div>
+    <div class="card">
+      <div class="swatches">${PALETTES.map(([id, name, color]) => `
+        <button class="swatch ${look.palette === id ? 'on' : ''}" data-act="lookPalette" data-v="${id}"><i style="background:${color}"></i>${name}</button>`).join('')}</div>
+      <div class="seg" style="margin-top:12px">
+        <button class="${look.density === 'cozy' ? 'on' : ''}" data-act="lookDensity" data-v="cozy">Просторно</button>
+        <button class="${look.density === 'compact' ? 'on' : ''}" data-act="lookDensity" data-v="compact">Компактно</button>
+      </div>
+      <div class="hint small" style="margin-top:8px">Меняется сразу и только на этом телефоне.</div>
+    </div>
+
     <div class="section-title">Магазин</div>
     <div class="card">
       ${field('shopName', 'Название магазина', 'placeholder="Например, Aliya Shop"', 'Показывается в чеке и на странице «Где мой заказ?»')}

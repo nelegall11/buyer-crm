@@ -784,3 +784,42 @@ main { padding: 0 16px; }
 /* Панель снизу */
 .sheet { border-radius: 22px 22px 0 0; }
 .sheet-bg { background: rgba(0, 0, 0, .35); }
+
+
+/* =====================================================================
+   ПАЛИТРЫ — выбираются в ⚙️ Настройки → Оформление.
+   app.js ставит <html data-palette="..." data-density="...">
+   ===================================================================== */
+html[data-palette="petrol"] { --bg2: #f4f3ef; --btn: #1f6f78; --link: #1f6f78; --accent-soft: #e3efef; --btn-text: #ffffff; }
+html[data-theme="dark"][data-palette="petrol"] { --bg2: #151617; --btn: #3f9a9f; --link: #3f9a9f; --accent-soft: #23393b; --btn-text: #ffffff; }
+html[data-palette="graphite"] { --bg2: #f5f5f4; --btn: #1f1f1f; --link: #1f1f1f; --accent-soft: #ececec; --btn-text: #ffffff; }
+html[data-theme="dark"][data-palette="graphite"] { --bg2: #151617; --btn: #e6e6e6; --link: #e6e6e6; --accent-soft: #2c2c2e; --btn-text: #151515; }
+html[data-palette="sage"] { --bg2: #f3f2ec; --btn: #5b7a5a; --link: #5b7a5a; --accent-soft: #e6ece3; --btn-text: #ffffff; }
+html[data-theme="dark"][data-palette="sage"] { --bg2: #151617; --btn: #7fa37e; --link: #7fa37e; --accent-soft: #2a352a; --btn-text: #ffffff; }
+html[data-palette="rose"] { --bg2: #f7f2f0; --btn: #b06a72; --link: #b06a72; --accent-soft: #f3e3e4; --btn-text: #ffffff; }
+html[data-theme="dark"][data-palette="rose"] { --bg2: #151617; --btn: #d08d95; --link: #d08d95; --accent-soft: #3a2a2d; --btn-text: #ffffff; }
+html[data-palette="indigo"] { --bg2: #f2f3f7; --btn: #4a56c4; --link: #4a56c4; --accent-soft: #e5e7f7; --btn-text: #ffffff; }
+html[data-theme="dark"][data-palette="indigo"] { --bg2: #151617; --btn: #7d87e6; --link: #7d87e6; --accent-soft: #282b45; --btn-text: #ffffff; }
+html[data-palette="sand"] { --bg2: #f5f0e8; --btn: #a8743a; --link: #a8743a; --accent-soft: #f1e5d4; --btn-text: #ffffff; }
+html[data-theme="dark"][data-palette="sand"] { --bg2: #151617; --btn: #cf9a5c; --link: #cf9a5c; --accent-soft: #3a3024; --btn-text: #ffffff; }
+
+/* Текст на акцентных кнопках и «+» — по палитре (у графита в тёмной теме он тёмный) */
+.btn.primary, .main-btn, .plus-circle, .chip.on { color: var(--btn-text); }
+.chip.on { background: var(--btn); border-color: var(--btn); }
+
+/* Плотность «Компактно»: больше заказов на экране */
+html[data-density="compact"] body { font-size: 15px; }
+html[data-density="compact"] .lrow { min-height: 50px; padding-top: 7px; padding-bottom: 7px; }
+html[data-density="compact"] .card { padding: 12px; margin-bottom: 8px; }
+html[data-density="compact"] .tile { padding: 10px; }
+html[data-density="compact"] .tile-v { font-size: 20px; }
+html[data-density="compact"] .btn { min-height: 42px; }
+html[data-density="compact"] .input { height: 44px; }
+html[data-density="compact"] .section-title { margin-top: 16px; margin-bottom: 8px; }
+html[data-density="compact"] .top h1 { font-size: 24px; }
+
+/* Выбор палитры в настройках */
+.swatches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.swatch { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px; border: 2px solid transparent; border-radius: 14px; background: var(--bg2); font-size: 13px; color: var(--text2); }
+.swatch.on { border-color: var(--btn); color: var(--text); font-weight: 600; }
+.swatch i { display: block; width: 30px; height: 30px; border-radius: 50%; box-shadow: inset 0 0 0 4px rgba(255, 255, 255, .55); }

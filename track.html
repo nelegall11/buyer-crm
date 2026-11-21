@@ -69,7 +69,7 @@
       return Math.ceil(cost * (1 + markup / 100) / step - 1e-9) * step;
     }
   </script>
-  <script src="demo.js?v=9"></script>
+  <script src="demo.js?v=10"></script>
   <script>
     'use strict';
     const P = new URLSearchParams(location.search);
@@ -77,6 +77,11 @@
     const T = P.get('t') || '';
     const DEMO = P.has('demo');
     const app = document.getElementById('app');
+    // Цвет магазина (палитра байера) — из ссылки ?p=
+    const ACCENTS = { petrol: ['#1f6f78', '#3f9a9f'], graphite: ['#1f1f1f', '#d0d0d0'], sage: ['#5b7a5a', '#7fa37e'],
+      rose: ['#b06a72', '#d08d95'], indigo: ['#4a56c4', '#7d87e6'], sand: ['#a8743a', '#cf9a5c'] };
+    const acc = ACCENTS[P.get('p')];
+    if (acc) document.documentElement.style.setProperty('--accent', matchMedia('(prefers-color-scheme: dark)').matches ? acc[1] : acc[0]);
     // Путь заказа: последний шаг «Выдан», «Отменён» показываем отдельно
     const ICONS = ['💳', '✅', '🛍', '📦', '🚚', '🎉', '🤝'];
 
