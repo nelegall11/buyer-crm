@@ -100,7 +100,33 @@ function applyTheme() {
   }
 }
 
+// Пока открыта клавиатура (курсор в поле) — прячем нижнее меню, итог и главную кнопку,
+// чтобы на маленьком экране было видно, что вводишь
+let typingTimer = null;
+function isTypingField(el) {
+  return el && (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && !['checkbox', 'radio', 'button', 'date', 'datetime-local'].includes(el.type)));
+}
+function onFocusIn(e) {
+  if (!isTypingField(e.target)) return;
+  clearTimeout(typingTimer);
+  document.body.classList.add('typing');
+  if (IN_TG) { try { tg.MainButton.hide(); } catch (err) { /* старые версии */ } }
+  // Поле — повыше, ближе к верху экрана, чтобы подсказки под ним тоже были видны
+  setTimeout(() => { if (document.activeElement === e.target) e.target.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 250);
+}
+function onFocusOut() {
+  // Небольшая пауза: при переходе между полями клавиатура не закрывается — меню не мигает
+  clearTimeout(typingTimer);
+  typingTimer = setTimeout(() => {
+    if (isTypingField(document.activeElement)) return;
+    document.body.classList.remove('typing');
+    updateMainButton();
+  }, 150);
+}
+
 function start() {
+  document.addEventListener('focusin', onFocusIn);
+  document.addEventListener('focusout', onFocusOut);
   document.addEventListener('touchstart', onTouchStart, { passive: true });
   document.addEventListener('touchmove', onTouchMove, { passive: true });
   document.addEventListener('touchend', onTouchEnd);
@@ -456,7 +482,7 @@ function updateMainButton() {
   if (state.sheet) { text = null; mainAction = null; }
 
   if (IN_TG) {
-    if (text) { tg.MainButton.setText(text); tg.MainButton.show(); } else tg.MainButton.hide();
+    if (text && !document.body.classList.contains('typing')) { tg.MainButton.setText(text); tg.MainButton.show(); } else tg.MainButton.hide();
   } else {
     const b = $('#mainBtn');
     b.hidden = !text;

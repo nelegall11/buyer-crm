@@ -1014,3 +1014,10 @@ html[data-theme="dark"] .sum-bar { box-shadow: 0 6px 24px rgba(0, 0, 0, .45); bo
 html[data-density="compact"] .hero-v { font-size: 26px; }
 html[data-density="compact"] .qa > span { width: 46px; height: 46px; }
 html[data-density="compact"] .btn { min-height: 44px; }
+
+/* Открыта клавиатура: прячем всё, что прилипает к низу экрана */
+body.typing .tabs, body.typing .main-btn { display: none; }
+body.typing .sum-bar { position: static; box-shadow: none; }
+body.typing .top { position: static; }
+body.typing #view { scroll-margin-top: 8px; }
+body.typing .input, body.typing textarea { scroll-margin-top: 12px; }
