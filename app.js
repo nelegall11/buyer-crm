@@ -28,7 +28,7 @@ const S = { WAIT: 0, PAID: 1, BOUGHT: 2, STOCK: 3, WAY: 4, ARRIVED: 5, DONE: 6, 
 // Красный не используем: он только для долгов. «Ждёт оплаты» — спокойный серо-синий.
 const STATUS_COLORS = ['#7c8bb0', '#f5a524', '#f76b15', '#8e4ec6', '#0090ff', '#12a594', '#30a46c', '#a3a3ab'];
 const TEXT_KEYS = [null, 'paid', 'bought', 'stock', 'way', 'arrived', 'done', null];
-const TAB_TITLES = { today: 'Сегодня', orders: 'Заказы', new: 'Новый заказ', clients: 'Клиенты' };
+const TAB_TITLES = { today: 'Сегодня', orders: 'Заказы', new: 'Новый заказ', clients: 'Клиенты', biz: 'Бизнес' };
 const DRAFT_KEY = 'buyercrm-draft';
 const PAGE = 30; // по сколько заказов показывать в списке
 
@@ -36,6 +36,8 @@ const state = {
   settings: {}, statuses: [], texts: {}, orders: [],
   tab: 'today',
   cquery: '',         // поиск во вкладке «Клиенты»
+  analytics: null,    // вкладка «Бизнес»: короткие строки по всем заказам, включая архив
+  bizPeriod: 'month', bizMetric: 'total', bizTable: false, bizSel: null,
   stack: [],          // экраны поверх вкладок: заказ, сводка, готовый заказ
   filter: 'active',   // фильтр списка заказов: 'active', 'all' или номер статуса
   query: '',
@@ -314,7 +316,6 @@ function render() {
   document.body.classList.toggle('overlay', !!top);
   $('#title').textContent = top ? screenTitle(top) : TAB_TITLES[state.tab];
   $('#backBtn').hidden = IN_TG || !top;
-  $('#sumBtn').hidden = !!(top && top.type === 'summary') || state.loading;
 
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === state.tab));
   if (!state.loading && !state.error) {
@@ -498,6 +499,13 @@ const ACTIONS = {
     if (list && state.filter !== 'active') list.scrollIntoView({ block: 'start', behavior: 'smooth' });
   },
   tabDebts: () => openScreen({ type: 'debts' }),
+
+  // Вкладка «Бизнес»
+  bizPeriod: d => { state.bizPeriod = d.v; state.bizSel = null; render(); },
+  bizMetric: d => { state.bizMetric = d.v; render(); },
+  bizBar: d => { state.bizSel = Number(d.i); render(); },
+  bizTable: () => { state.bizTable = !state.bizTable; render(); },
+  bizRetry: () => { state.analyticsError = null; render(); },
   openBuy: () => { state.justBought = []; openScreen({ type: 'buy' }); },
   openAttention: () => openScreen({ type: 'attention' }),
   openHandoverList: () => openScreen({ type: 'handoverList' }),
@@ -688,6 +696,7 @@ const ACTIONS = {
     if (!confirm('Вернуть демо-данные к началу? Всё, что вы добавили, пропадёт.')) return;
     const d = await call('resetDemo');
     if (d) {
+      state.analytics = null;
       applyInit(d);
       state.settings = d.settings;
       state.draft = newDraft();
@@ -739,6 +748,7 @@ const TABS = {
   orders: ordersTab,
   new: newOrderTab,
   clients: clientsTab,
+  biz: bizTab,
 };
 
 function currentScreen() { return state.stack[state.stack.length - 1]; }
@@ -2137,6 +2147,366 @@ function todayTab() {
       ${attn.length > 5 ? `<button class="btn ghost" data-act="openAttention">Показать все ${attn.length}</button>` : ''}`
       : `<div class="card row"><span class="done-ic sm">${icon('check')}</span><div><b>Всё под контролем</b>
         <div class="hint small">Застрявших и забытых заказов нет</div></div></div>`}`;
+}
+
+// =====================================================================
+//  ВКЛАДКА «БИЗНЕС»: цифры по всему делу
+//  Данные — короткие строки по всем заказам, включая архив (action 'analytics'),
+//  поверх них — свежие заказы, которые уже загружены в приложение.
+// =====================================================================
+
+const BIZ_PERIODS = {
+  week: { label: 'Неделя', days: 7, prev: 'к прошлой неделе' },
+  month: { label: 'Месяц', days: 30, prev: 'к прошлому месяцу' },
+  quarter: { label: '3 месяца', days: 90, prev: 'к прошлым 3 мес.' },
+  year: { label: 'Год', days: 365, prev: 'к прошлому году' },
+};
+const BIZ_METRICS = { total: 'Выручка', profit: 'Прибыль', orders: 'Заказы' };
+const ANALYTICS_KEY = 'buyercrm-analytics:' + API_URL;
+const DAY = 86400000;
+
+async function loadAnalytics() {
+  if (state.analyticsLoading) return;
+  state.analyticsLoading = true;
+  // Сначала — сохранённое с прошлого раза, чтобы вкладка открылась мгновенно
+  if (!state.analytics && !DEMO) {
+    try {
+      const c = JSON.parse(localStorage.getItem(ANALYTICS_KEY));
+      if (c && Array.isArray(c.rows)) state.analytics = c.rows;
+    } catch (e) { /* нет сохранённого — подождём сервер */ }
+  }
+  try {
+    const res = await api('analytics');
+    state.analytics = res.rows;
+    state.analyticsError = null;
+    if (!DEMO) {
+      try { localStorage.setItem(ANALYTICS_KEY, JSON.stringify({ at: Date.now(), rows: res.rows })); } catch (e) { /* не страшно */ }
+    }
+  } catch (err) {
+    if (!state.analytics) state.analyticsError = err instanceof TypeError ? 'Нет связи' : (err.message || 'Ошибка');
+  }
+  state.analyticsLoading = false;
+  if (state.tab === 'biz' && !state.stack.length) softRender();
+}
+
+function orderToRow(o) {
+  const shops = [];
+  o.items.forEach(x => { const s = isUrl(x.link) ? site(x.link) : ''; if (s && !shops.includes(s)) shops.push(s); });
+  return {
+    no: o.no, date: o.date, client: o.client, phone: o.phone, status: o.status, statusAt: o.statusAt || o.date,
+    total: o.total, paid: o.paid, profit: o.profit, cost: o.items.reduce((a, x) => a + (x.cost || 0), 0),
+    count: o.count, shops,
+  };
+}
+
+// Все заказы для аналитики: архив с сервера + свежие из приложения (они важнее — там последние изменения)
+function bizRows() {
+  const map = new Map();
+  (state.analytics || []).forEach(r => map.set(r.no, r));
+  state.orders.forEach(o => map.set(o.no, orderToRow(o)));
+  return [...map.values()].filter(r => r.status !== state.statuses[S.CANCEL]);
+}
+
+// Деление периода на столбики: дни, недели или месяцы
+function bizBuckets(period) {
+  const now = new Date();
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1).getTime();
+  const buckets = [];
+  if (period === 'year') {
+    for (let i = 11; i >= 0; i--) {
+      const from = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const to = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+      buckets.push({ from: from.getTime(), to: Math.min(to.getTime(), end), label: ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'][from.getMonth()], long: from.toLocaleString('ru-RU', { month: 'long', year: 'numeric' }) });
+    }
+  } else if (period === 'quarter') {
+    for (let i = 12; i >= 0; i--) {
+      const to = end - i * 7 * DAY;
+      const from = to - 7 * DAY;
+      const d = new Date(from);
+      buckets.push({ from, to, label: fmtDate(d.toISOString()), long: `неделя с ${fmtDate(d.toISOString())}` });
+    }
+  } else {
+    const n = BIZ_PERIODS[period].days;
+    for (let i = n - 1; i >= 0; i--) {
+      const from = end - (i + 1) * DAY;
+      const d = new Date(from);
+      buckets.push({ from, to: from + DAY, label: fmtDate(d.toISOString()), long: d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', weekday: 'short' }) });
+    }
+  }
+  return buckets;
+}
+
+function sumBy(rows, key) { return rows.reduce((a, r) => a + (Number(r[key]) || 0), 0); }
+
+// Изменение к прошлому периоду: «↑ 12% к прошлому месяцу» (зелёным, если стало лучше)
+function deltaHtml(now, before, label) {
+  if (!before) return `<span class="tile-s">${now ? 'раньше данных нет' : 'нет данных'}</span>`;
+  const pct = Math.round((now - before) / before * 100);
+  if (pct === 0) return `<span class="tile-s">= ${label}</span>`;
+  return `<span class="tile-s"><span class="${pct > 0 ? 'up' : 'down'}">${pct > 0 ? '↑' : '↓'} ${Math.abs(pct)}%</span> ${label}</span>`;
+}
+
+// 1 250 000 → «1,3 млн», 45 000 → «45 тыс»
+function compactNum(n) {
+  const v = Math.abs(n);
+  if (v >= 1e6) return String(Math.round(n / 1e5) / 10).replace('.', ',') + ' млн';
+  if (v >= 1e3) return Math.round(n / 1e3) + ' тыс';
+  return String(Math.round(n));
+}
+
+function bizTab() {
+  if (!state.analytics) {
+    if (!state.analyticsLoading) loadAnalytics();
+    if (state.analyticsError) {
+      return `<div class="empty"><span class="e-icon">${icon('offline')}</span><b>Не получилось загрузить</b>${esc(state.analyticsError)}<br><br>
+        <button class="btn primary" data-act="bizRetry">Повторить</button></div>`;
+    }
+    return loadingHtml();
+  }
+
+  const period = state.bizPeriod;
+  const P = BIZ_PERIODS[period];
+  const now = Date.now();
+  const from = now - P.days * DAY;
+  const prevFrom = from - P.days * DAY;
+  const rows = bizRows();
+  const inRange = (r, a, b) => { const t = new Date(r.date).getTime(); return t >= a && t < b; };
+  const cur = rows.filter(r => inRange(r, from, now + DAY));
+  const prev = rows.filter(r => inRange(r, prevFrom, from));
+
+  const rev = sumBy(cur, 'total'), revPrev = sumBy(prev, 'total');
+  const prof = sumBy(cur, 'profit'), profPrev = sumBy(prev, 'profit');
+  const avg = cur.length ? rev / cur.length : 0, avgPrev = prev.length ? revPrev / prev.length : 0;
+  const margin = rev ? Math.round(prof / rev * 100) : 0;
+
+  const chips = Object.keys(BIZ_PERIODS).map(k =>
+    `<button class="chip ${k === period ? 'on' : ''}" data-act="bizPeriod" data-v="${k}">${BIZ_PERIODS[k].label}</button>`).join('');
+
+  return `
+    <div class="chips" style="padding-top:4px">${chips}</div>
+
+    <div class="tiles">
+      <div class="tile neutral kpi"><span class="tile-l">Выручка</span><span class="tile-v">${moneyShort(rev)}</span>${deltaHtml(rev, revPrev, P.prev)}</div>
+      <div class="tile neutral kpi"><span class="tile-l">Прибыль · ${margin}%</span><span class="tile-v ok">${moneyShort(prof)}</span>${deltaHtml(prof, profPrev, P.prev)}</div>
+      <div class="tile neutral kpi"><span class="tile-l">Заказов</span><span class="tile-v">${cur.length}</span>${deltaHtml(cur.length, prev.length, P.prev)}</div>
+      <div class="tile neutral kpi"><span class="tile-l">Средний чек</span><span class="tile-v">${moneyShort(avg)}</span>${deltaHtml(avg, avgPrev, P.prev)}</div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="row between" style="margin-bottom:8px">
+        <div class="seg seg-sm">${Object.keys(BIZ_METRICS).map(k =>
+          `<button class="${k === state.bizMetric ? 'on' : ''}" data-act="bizMetric" data-v="${k}">${BIZ_METRICS[k]}</button>`).join('')}</div>
+        <button class="link-btn" data-act="bizTable">${state.bizTable ? 'График' : 'Таблицей'}</button>
+      </div>
+      <div id="bizChart">${bizChartHtml(cur)}</div>
+    </div>
+
+    ${bizMoneyHtml()}
+    ${bizFunnelHtml()}
+    ${bizClientsHtml(rows, cur, from)}
+    ${bizShopsHtml(cur)}
+    ${bizSpeedHtml(rows, from)}
+    ${DEMO ? `<button class="btn ghost danger" data-act="resetDemo" style="margin-top:20px">Сбросить демо-данные</button>` : ''}`;
+}
+
+// ---------- График по дням / неделям / месяцам ----------
+
+function bizChartHtml(cur) {
+  const buckets = bizBuckets(state.bizPeriod);
+  const metric = state.bizMetric;
+  const val = rs => metric === 'orders' ? rs.length : sumBy(rs, metric);
+  buckets.forEach(b => {
+    const rs = cur.filter(r => { const t = new Date(r.date).getTime(); return t >= b.from && t < b.to; });
+    b.value = val(rs);
+    b.orders = rs.length;
+  });
+  const fmt = v => metric === 'orders' ? `${v}` : money(v);
+
+  if (state.bizTable) {
+    return `<div class="lines">${buckets.slice().reverse().map(b =>
+      `<div><span>${esc(b.long)}</span><b class="money">${fmt(b.value)}</b></div>`).join('')}</div>`;
+  }
+
+  const max = Math.max(...buckets.map(b => b.value), 0);
+  if (!max) return `<div class="hint" style="padding:30px 0;text-align:center">За этот период пока пусто</div>`;
+
+  // Ровная шкала: 0, половина, верх (округлённые)
+  const mag = Math.pow(10, Math.floor(Math.log10(max)));
+  const top = Math.ceil(max / mag * 2) / 2 * mag;
+  const W = 320, H = 150, padL = 44, padB = 20, padT = 8;
+  const plotW = W - padL, plotH = H - padB - padT;
+  const n = buckets.length;
+  const slot = plotW / n;
+  const bw = Math.max(3, Math.min(24, slot - 2));
+  const sel = state.bizSel != null && state.bizSel < n ? state.bizSel : buckets.findIndex(b => b.value === max);
+  const y = v => padT + plotH - (v / top) * plotH;
+  const ticks = [0, top / 2, top];
+  const labelEvery = n > 14 ? Math.ceil(n / 6) : 1;
+
+  const bars = buckets.map((b, i) => {
+    const x = padL + i * slot + (slot - bw) / 2;
+    const h = Math.max(b.value ? 2 : 0, (b.value / top) * plotH);
+    const y0 = padT + plotH;
+    const r = Math.min(4, bw / 2, h);
+    // Скруглён только верх столбика, низ стоит ровно на оси
+    const d = h ? `M${x},${y0} V${y0 - h + r} Q${x},${y0 - h} ${x + r},${y0 - h} H${x + bw - r} Q${x + bw},${y0 - h} ${x + bw},${y0 - h + r} V${y0} Z` : '';
+    return `
+      ${d ? `<path d="${d}" class="bar ${i === sel ? 'sel' : ''}"/>` : ''}
+      <rect x="${padL + i * slot}" y="${padT}" width="${slot}" height="${plotH + padB}" fill="transparent"
+        data-act="bizBar" data-i="${i}" tabindex="0" aria-label="${esc(b.long)}: ${esc(fmt(b.value))}"/>
+      ${(n - 1 - i) % labelEvery === 0 ? `<text x="${padL + i * slot + slot / 2}" y="${H - 5}" class="tick" text-anchor="middle">${esc(b.label)}</text>` : ''}`;
+  }).join('');
+
+  const s = buckets[sel];
+  return `
+    <div class="chart-tip"><b>${esc(fmt(s.value))}</b> <span class="hint">· ${esc(s.long)}${metric !== 'orders' ? ` · ${ordersWord(s.orders)}` : ''}</span></div>
+    <svg viewBox="0 0 ${W} ${H}" class="chart" role="img" aria-label="${esc(BIZ_METRICS[metric])} по периодам">
+      ${ticks.map(t => `<line x1="${padL}" x2="${W}" y1="${y(t)}" y2="${y(t)}" class="grid"/>
+        <text x="${padL - 6}" y="${y(t) + 4}" class="tick" text-anchor="end">${metric === 'orders' ? Math.round(t) : compactNum(t)}</text>`).join('')}
+      ${bars}
+    </svg>`;
+}
+
+// ---------- Деньги прямо сейчас ----------
+
+function bizMoneyHtml() {
+  const active = state.orders.filter(o => !isClosed(o));
+  const debts = debtOrders().reduce((a, o) => a + o.debt, 0);
+  // Вложено в товар: себестоимость уже выкупленных товаров по невыданным заказам
+  const inGoods = active.reduce((a, o) => a + o.items.filter(x => x.bought).reduce((s, x) => s + (x.cost || 0), 0), 0);
+  const profitAhead = active.reduce((a, o) => a + o.profit, 0);
+  return `
+    <div class="section-title">Деньги сейчас</div>
+    <div class="card lines">
+      <div data-act="tabDebts"><span>${icon('wallet')} Должны клиенты</span><b class="debt money">${money(debts)}</b></div>
+      <div><span>${icon('cart')} Вложено в товар</span><b class="money">${money(inGoods)}</b></div>
+      <div><span>${icon('truck')} Прибыль в работе</span><b class="ok money">${money(profitAhead)}</b></div>
+    </div>
+    <p class="hint small" style="margin:6px 4px 0">«Вложено в товар» — сколько вы уже потратили на выкуп по заказам, которые ещё не выданы. «Прибыль в работе» — сколько заработаете, когда их выдадите.</p>`;
+}
+
+// ---------- Воронка: сколько заказов на каждом этапе ----------
+
+function bizFunnelHtml() {
+  const stages = [S.WAIT, S.PAID, S.BOUGHT, S.STOCK, S.WAY, S.ARRIVED];
+  const data = stages.map(i => {
+    const list = state.orders.filter(o => statusIdx(o.status) === i);
+    return { i, n: list.length, sum: sumBy(list, 'total') };
+  });
+  const max = Math.max(...data.map(d => d.n), 1);
+  return `
+    <div class="section-title">Заказы по этапам</div>
+    <div class="card hbars">
+      ${data.map(d => `
+        <div class="hbar" data-act="tile" data-v="${d.i}">
+          <div class="row between"><span><span class="dot" style="${statusStyle(d.i)}"></span>${esc(state.statuses[d.i])}</span>
+            <span class="hint small">${d.n} · ${moneyShort(d.sum)}</span></div>
+          <div class="track"><span style="width:${Math.round(d.n / max * 100)}%"></span></div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// ---------- Клиенты ----------
+
+function bizClientsHtml(rows, cur, from) {
+  const key = r => clientKey(r);
+  const first = new Map();
+  const life = new Map();
+  rows.slice().sort((a, b) => new Date(a.date) - new Date(b.date)).forEach(r => {
+    const k = key(r);
+    if (!first.has(k)) first.set(k, new Date(r.date).getTime());
+    const c = life.get(k) || { key: k, name: r.client, phone: r.phone, orders: 0, total: 0, last: 0 };
+    c.orders++; c.total += r.total; c.last = Math.max(c.last, new Date(r.date).getTime()); c.name = r.client; c.phone = r.phone;
+    life.set(k, c);
+  });
+
+  const periodClients = new Map();
+  cur.forEach(r => {
+    const k = key(r);
+    const c = periodClients.get(k) || { key: k, name: r.client, total: 0, orders: 0 };
+    c.total += r.total; c.orders++;
+    periodClients.set(k, c);
+  });
+  const all = [...periodClients.values()];
+  const fresh = all.filter(c => first.get(c.key) >= from).length;
+  const back = all.length - fresh;
+  const top = all.sort((a, b) => b.total - a.total).slice(0, 5);
+  const topMax = top.length ? top[0].total : 1;
+
+  // Давно не заказывали: постоянные (2+ заказа), последний заказ больше 45 дней назад
+  const sleeping = [...life.values()]
+    .filter(c => c.orders >= 2 && Date.now() - c.last > 45 * DAY)
+    .sort((a, b) => b.total - a.total).slice(0, 5);
+
+  return `
+    <div class="section-title">Клиенты</div>
+    <div class="tiles">
+      <div class="tile neutral kpi"><span class="tile-l">Новые</span><span class="tile-v">${fresh}</span><span class="tile-s">первый заказ в этом периоде</span></div>
+      <div class="tile neutral kpi"><span class="tile-l">Вернулись</span><span class="tile-v">${back}</span><span class="tile-s">${all.length ? Math.round(back / all.length * 100) : 0}% клиентов — постоянные</span></div>
+    </div>
+    ${top.length ? `<div class="card hbars">
+      <div class="hint small" style="margin-bottom:4px">Лучшие клиенты за период</div>
+      ${top.map(c => `
+        <div class="hbar" data-act="openClient" data-key="${esc(c.key)}">
+          <div class="row between"><span class="ellipsis">${esc(c.name)}</span><span class="small"><b class="money">${moneyShort(c.total)}</b> <span class="hint">· ${ordersWord(c.orders)}</span></span></div>
+          <div class="track"><span style="width:${Math.round(c.total / topMax * 100)}%"></span></div>
+        </div>`).join('')}
+    </div>` : ''}
+    ${sleeping.length ? `
+      <div class="section-title">Давно не заказывали</div>
+      <div class="list">${sleeping.map(c => {
+        const url = waLink(c.phone, fillText(state.texts.comeback || 'Здравствуйте, {client}! Давно не виделись 🙂 Если что-то присмотрели — пишите, выкупим.', { client: c.name, no: '', debt: 0, track: '' }));
+        return `
+          <div class="lrow">
+            <span class="ava" data-act="openClient" data-key="${esc(c.key)}">${esc(initials(c.name))}</span>
+            <div class="grow" data-act="openClient" data-key="${esc(c.key)}">
+              <div class="l1"><span class="name ellipsis">${esc(c.name)}</span></div>
+              <div class="l2">${ordersWord(c.orders)} на ${moneyShort(c.total)} · последний ${daysWord(Math.floor((Date.now() - c.last) / DAY))} назад</div>
+            </div>
+            ${url ? `<button class="btn small wa" data-act="open" data-url="${esc(url)}">${icon('chat')}Написать</button>` : ''}
+          </div>`;
+      }).join('')}</div>` : ''}`;
+}
+
+// ---------- Магазины ----------
+
+function bizShopsHtml(cur) {
+  const map = new Map();
+  cur.forEach(r => (r.shops || []).forEach(s => {
+    const m = map.get(s) || { name: s, orders: 0, total: 0 };
+    m.orders++;
+    m.total += r.total / (r.shops.length || 1); // заказ из нескольких магазинов делим поровну
+    map.set(s, m);
+  }));
+  const top = [...map.values()].sort((a, b) => b.orders - a.orders).slice(0, 5);
+  if (!top.length) return '';
+  const max = top[0].orders;
+  return `
+    <div class="section-title">Магазины</div>
+    <div class="card hbars">
+      ${top.map(s => `
+        <div class="hbar">
+          <div class="row between"><span class="ellipsis"><span class="ava sm">${esc(s.name[0].toUpperCase())}</span>${esc(s.name)}</span>
+            <span class="small"><b>${ordersWord(s.orders)}</b> <span class="hint">· ${moneyShort(s.total)}</span></span></div>
+          <div class="track"><span style="width:${Math.round(s.orders / max * 100)}%"></span></div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// ---------- Скорость доставки ----------
+
+function bizSpeedHtml(rows, from) {
+  const done = rows.filter(r => r.status === state.statuses[S.DONE] && new Date(r.statusAt).getTime() >= from);
+  const days = done.map(r => (new Date(r.statusAt) - new Date(r.date)) / DAY).filter(d => d >= 0);
+  const avg = days.length ? Math.round(days.reduce((a, b) => a + b, 0) / days.length) : 0;
+  const t = Object.assign({ way: 25 }, state.settings.attention || {});
+  const stuck = state.orders.filter(o => statusIdx(o.status) === S.WAY && daysSince(o.statusAt || o.date) >= t.way).length;
+  return `
+    <div class="section-title">Доставка</div>
+    <div class="tiles">
+      <div class="tile neutral kpi"><span class="tile-l">От заказа до выдачи</span><span class="tile-v">${days.length ? daysWord(avg) : '—'}</span><span class="tile-s">в среднем, ${ordersWord(days.length)}</span></div>
+      <button class="tile ${stuck ? 'danger' : 'neutral'} kpi" data-act="tile" data-v="going"><span class="tile-l">Застряли в пути</span><span class="tile-v">${stuck}</span><span class="tile-s">дольше ${daysWord(t.way)}</span></button>
+    </div>`;
 }
 
 // =====================================================================

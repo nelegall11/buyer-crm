@@ -10,7 +10,8 @@
 // =====================================================================
 
 const DemoServer = (() => {
-  const KEY = 'buyercrm-demo-v5';
+  const KEY = 'buyercrm-demo-v8';
+  const HISTORY_COUNT = 220; // старые выданные заказы за год — для вкладки «Бизнес»
   const ORDER_COUNT = 100;
   const ARCHIVE_DAYS = 30; // выданные заказы старше 30 дней без долга не загружаем сразу
 
@@ -38,6 +39,7 @@ const DemoServer = (() => {
     arrived: 'Здравствуйте, {client}! Заказ №{no} прибыл 🎉 Можно забирать.{debt_line}',
     done: '{client}, спасибо за заказ! Будем рады видеть вас снова 💛',
     remind: 'Здравствуйте, {client}! Напоминаем про оплату по заказу №{no}: осталось {debt}. Спасибо 🙏',
+    comeback: 'Здравствуйте, {client}! Давно не виделись 🙂 Если что-то присмотрели — пишите, выкупим.',
   };
 
   // ---------- Выдуманные клиенты и магазины ----------
@@ -82,14 +84,22 @@ const DemoServer = (() => {
   function build() {
     const r = makeRandom(42);
     const pick = arr => arr[Math.floor(r() * arr.length)];
-    const data = { settings: { ...SETTINGS }, orders: [], nextNo: ORDER_COUNT + 1, nextItemId: 1 };
+    const data = { settings: { ...SETTINGS }, orders: [], nextNo: HISTORY_COUNT + ORDER_COUNT + 1, nextItemId: 1 };
     const clients = NAMES.map((name, i) => [name, `8 ${OPERATORS[i % OPERATORS.length]} 555 ${String(10 + i).padStart(2, '0')} ${String(11 + i * 3).slice(-2)}`]);
     const wholesale = WHOLESALE.map((name, i) => [name, `8 727 555 9${i} 0${i}`]);
 
-    for (let no = 1; no <= ORDER_COUNT; no++) {
-      const daysAgo = Math.max(0, Math.round((ORDER_COUNT - no) * 0.6 + (r() - 0.5) * 2));
+    // Сначала год истории (заказов со временем становится больше — бизнес растёт), потом последние 2 месяца
+    const plan = [];
+    for (let k = 0; k < HISTORY_COUNT; k++) plan.push(61 + Math.round(Math.pow(r(), 1.6) * 300));
+    plan.sort((a, b) => b - a);
+    for (let k = 0; k < ORDER_COUNT; k++) plan.push(Math.max(0, Math.round((ORDER_COUNT - 1 - k) * 0.6 + (r() - 0.5) * 2)));
+
+    for (let no = 1; no <= plan.length; no++) {
+      const daysAgo = plan[no - 1];
       const opt = r() < 0.08;
-      const [client, phone] = opt ? pick(wholesale) : pick(clients);
+      // Клиентская база растёт: со временем появляются новые клиенты
+      const pool = clients.slice(0, Math.min(clients.length, 6 + Math.floor(no / plan.length * 26)));
+      const [client, phone] = opt ? pick(wholesale) : pick(pool);
       const markup = opt ? 15 : (r() < 0.85 ? 25 : 20);
 
       // Чем старше заказ, тем дальше он продвинулся
@@ -100,11 +110,12 @@ const DemoServer = (() => {
       else if (daysAgo <= 12) status = x < 0.15 ? PAID : x < 0.5 ? BOUGHT : STOCK;
       else if (daysAgo <= 22) status = x < 0.25 ? STOCK : WAY;
       else if (daysAgo <= 32) status = x < 0.3 ? WAY : x < 0.65 ? ARRIVED : DONE;
-      else status = x < 0.07 ? ARRIVED : x < 0.95 ? DONE : CANCEL;
+      else if (daysAgo <= 60) status = x < 0.07 ? ARRIVED : x < 0.95 ? DONE : CANCEL;
+      else status = x < 0.95 ? DONE : CANCEL;
       if (daysAgo > 3 && r() < 0.03) status = CANCEL;
 
       // Товары: обычно из одного магазина
-      const shop = pick(SHOPS);
+      const shop = opt ? pick(SHOPS.slice(3, 5)) : pick(SHOPS); // опт — недорогие детские и спортивные вещи
       const n = r() < 0.6 ? 1 : r() < 0.75 ? 2 : 3;
       const raw = [];
       for (let k = 0; k < n; k++) {
@@ -114,7 +125,7 @@ const DemoServer = (() => {
         raw.push({
           link: `${base}${slug}-${1000 + Math.floor(r() * 9000)}`,
           size: opt ? pick(sizes) + (r() < 0.5 ? ', ' + pick(sizes) : '') : pick(sizes),
-          qty: opt ? 5 + Math.floor(r() * 16) : (r() < 0.85 ? 1 : 2),
+          qty: opt ? 3 + Math.floor(r() * 6) : (r() < 0.85 ? 1 : 2),
           amount: price, currency,
         });
       }
@@ -124,7 +135,9 @@ const DemoServer = (() => {
       date.setHours(9 + Math.floor(r() * 12), Math.floor(r() * 60), 0, 0);
       // Когда заказ получил текущий статус (чтобы видеть, что он «застрял»)
       const k = [0, 0.3, 0.5, 0.4, 0.85, 0.15, 0.5, 0.5][status];
-      const statusAt = new Date(Date.now() - Math.round(daysAgo * k) * 86400000 - 3600000);
+      let statusAt = new Date(Date.now() - Math.round(daysAgo * k) * 86400000 - 3600000);
+      // Выданные — через 2–5 недель после заказа (так считается «средний срок доставки»)
+      if (status === DONE) statusAt = new Date(Math.min(Date.now() - 3600000, date.getTime() + (16 + Math.round(r() * 20)) * 86400000));
       const o = {
         no, date: date.toISOString(), client, phone, opt, comment: '', paid: 0,
         status: STATUSES[status], statusAt: statusAt.toISOString(), snoozeUntil: '',
@@ -165,6 +178,20 @@ const DemoServer = (() => {
     o.total = o.items.reduce((a, x) => a + x.price, 0);
     o.profit = o.items.reduce((a, x) => a + x.price - x.cost, 0);
     o.debt = o.total - o.paid;
+  }
+
+  function analyticsRow(o) {
+    const shops = [];
+    o.items.forEach(x => {
+      const m = String(x.link).match(/https?:\/\/(?:www\.)?([^\/\s?#]+)/i);
+      const shop = m ? m[1] : '';
+      if (shop && !shops.includes(shop)) shops.push(shop);
+    });
+    return {
+      no: o.no, date: o.date, client: o.client, phone: o.phone, status: o.status, statusAt: o.statusAt,
+      total: o.total, paid: o.paid, profit: o.profit, cost: o.items.reduce((a, x) => a + x.cost, 0),
+      count: o.count, shops,
+    };
   }
 
   function find(no) {
@@ -338,6 +365,11 @@ const DemoServer = (() => {
         return o;
       });
       return { orders: restored };
+    },
+
+    // Для вкладки «Бизнес»: короткая строка по каждому заказу, включая старые
+    analytics() {
+      return { rows: db.orders.map(analyticsRow) };
     },
 
     resetDemo() {

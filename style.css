@@ -572,3 +572,35 @@ a.icon-btn { text-decoration: none; }
 /* Несохранённый заказ */
 .failed-card { border: 1.5px solid var(--danger); }
 .failed-card b { color: var(--danger); }
+
+
+/* =====================================================================
+   Вкладка «Бизнес»
+   ===================================================================== */
+.kpi .tile-v { font-size: 22px; }
+.tile-v.ok { color: var(--ok); }
+.tile-s .up { color: var(--ok); font-weight: 700; }
+.tile-s .down { color: var(--danger); font-weight: 700; }
+
+/* График: один ряд, акцентный цвет; выбранный столбик ярче, остальные — приглушены */
+.chart-card { padding-bottom: 8px; }
+.chart { display: block; width: 100%; height: auto; overflow: visible; }
+.chart .bar { fill: var(--btn); opacity: .38; transition: opacity .15s; }
+.chart .bar.sel { opacity: 1; }
+.chart .grid { stroke: var(--sep); stroke-width: 1; }
+.chart .tick { fill: var(--hint); font-size: 10px; }
+.chart rect[data-act] { cursor: pointer; outline: none; }
+.chart-tip { min-height: 22px; margin-bottom: 4px; font-size: 15px; }
+
+/* Горизонтальные полоски: этапы, лучшие клиенты, магазины */
+.hbars { display: flex; flex-direction: column; gap: 12px; }
+.hbar { cursor: pointer; }
+.hbar .row { gap: 8px; font-size: 15px; }
+.hbar .track { height: 6px; margin-top: 6px; border-radius: 99px; background: var(--soft); overflow: hidden; }
+.hbar .track span { display: block; height: 100%; min-width: 2px; border-radius: 99px; background: var(--btn); }
+.hbar .dot { display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--c); }
+.ava.sm { width: 22px; height: 22px; font-size: 11px; margin-right: 8px; vertical-align: middle; }
+.lines .ic { width: 18px; height: 18px; vertical-align: -4px; margin-right: 6px; color: var(--hint); }
+
+.hbar .row > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hbar .row > span:last-child { flex: none; white-space: nowrap; }
