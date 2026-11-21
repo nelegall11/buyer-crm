@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Где мой заказ</title>
+  <!--
+    Страница для клиента: «Где мой заказ?»
+    Открывается по ссылке из чека: track.html?api=<адрес таблицы>&t=<секретный код заказа>
+    Показывает только этот заказ — без телефона, без чужих заказов, без данных байера.
+  -->
+  <style>
+    :root {
+      --bg: #ffffff; --bg2: #f1f1f5; --text: #16161a; --hint: #8a8a93; --accent: #2481cc;
+      --ok: #30a46c; --danger: #e5484d; --sep: rgba(127, 127, 127, .18);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #1f1f23; --bg2: #121214; --text: #f2f2f5; --hint: #8d8d96; --accent: #5aa7ff; --ok: #4cc38a; --danger: #ff6b70; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg2); color: var(--text); font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 520px; margin: 0 auto; padding: 20px 16px 40px; }
+    .shop { color: var(--hint); font-size: 14px; font-weight: 600; letter-spacing: .02em; }
+    h1 { margin: 4px 0 2px; font-size: 26px; }
+    .lead { color: var(--hint); margin: 0 0 16px; }
+    .card { background: var(--bg); border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+    .card h2 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--hint); }
+    .now { display: flex; align-items: center; gap: 12px; }
+    .now .big { font-size: 22px; font-weight: 800; }
+    .now .ic { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: var(--accent); color: #fff; font-size: 22px; flex: none; }
+    .steps { list-style: none; margin: 0; padding: 0; }
+    .steps li { position: relative; display: flex; gap: 12px; padding: 0 0 16px; }
+    .steps li:last-child { padding-bottom: 0; }
+    .steps li::before { content: ""; position: absolute; left: 11px; top: 24px; bottom: 0; width: 2px; background: var(--sep); }
+    .steps li:last-child::before { display: none; }
+    .steps li.done::before { background: var(--ok); }
+    .dot { position: relative; z-index: 1; width: 24px; height: 24px; flex: none; border-radius: 50%; border: 2px solid var(--sep); background: var(--bg); display: flex; align-items: center; justify-content: center; font-size: 13px; color: #fff; font-weight: 700; }
+    .done .dot { background: var(--ok); border-color: var(--ok); }
+    .cur .dot { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent); }
+    .steps .name { padding-top: 1px; }
+    .todo .name { color: var(--hint); }
+    .cur .name { font-weight: 700; }
+    .when { display: block; font-size: 13px; color: var(--hint); }
+    .row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; }
+    .row + .row { border-top: 1px solid var(--sep); }
+    .money { white-space: nowrap; font-weight: 600; }
+    .debt { color: var(--danger); }
+    .ok { color: var(--ok); }
+    .track { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .track code { font: 600 17px/1.3 ui-monospace, Menlo, Consolas, monospace; word-break: break-all; }
+    button { font: inherit; border: 0; border-radius: 10px; padding: 8px 12px; background: var(--bg2); color: var(--accent); font-weight: 600; cursor: pointer; }
+    .foot { text-align: center; color: var(--hint); font-size: 13px; margin-top: 18px; }
+    .empty { text-align: center; padding: 60px 10px; color: var(--hint); }
+    .empty b { display: block; color: var(--text); font-size: 19px; margin-bottom: 6px; }
+    .spinner { width: 30px; height: 30px; margin: 0 auto 12px; border-radius: 50%; border: 3px solid var(--sep); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .demo { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 99px; background: rgba(245,165,36,.2); color: #b4720a; margin-left: 6px; }
+  </style>
+</head>
+<body>
+  <main id="app"><div class="empty"><div class="spinner"></div>Загружаем ваш заказ…</div></main>
+
+  <script>
+    // Для демо-ссылок (?demo=1): та же формула цены, что в приложении — нужна демо-данным
+    function calcPrice(cost, markup, round) {
+      if (!(cost > 0)) return 0;
+      const step = Math.max(1, Number(round) || 1);
+      return Math.ceil(cost * (1 + markup / 100) / step - 1e-9) * step;
+    }
+  </script>
+  <script src="demo.js?v=7"></script>
+  <script>
+    'use strict';
+    const P = new URLSearchParams(location.search);
+    const API = P.get('api') || '';
+    const T = P.get('t') || '';
+    const DEMO = P.has('demo');
+    const app = document.getElementById('app');
+    // Путь заказа: последний шаг «Выдан», «Отменён» показываем отдельно
+    const ICONS = ['💳', '✅', '🛍', '📦', '🚚', '🎉', '🤝'];
+
+    const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const money = n => String(Math.round(Number(n) || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₸';
+    const dateText = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }); };
+
+    async function load() {
+      if (DEMO) return DemoServer.handle('track', { t: T });
+      if (!API || !T) throw new Error('Неполная ссылка. Попросите продавца прислать её ещё раз');
+      const res = await fetch(API + (API.includes('?') ? '&' : '?') + 'api=1', {
+        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'track', t: T }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error || 'Не получилось загрузить заказ');
+      return json.data;
+    }
+
+    function render(d) {
+      document.title = `Заказ №${d.no}` + (d.shop ? ` · ${d.shop}` : '');
+      const cancelled = d.statusIdx === 7;
+      const flow = d.statuses.slice(0, 7);
+      const cur = d.statusIdx;
+      const steps = flow.map((name, i) => {
+        const cls = cancelled ? 'todo' : i < cur ? 'done' : i === cur ? 'cur' : 'todo';
+        return `<li class="${cls}"><span class="dot">${i < cur && !cancelled ? '✓' : ''}</span>
+          <span class="name">${esc(name)}${i === cur && !cancelled ? `<span class="when">с ${esc(dateText(d.statusAt))}</span>` : ''}</span></li>`;
+      }).join('');
+      app.innerHTML = `
+        <div class="shop">${esc(d.shop || 'Ваш заказ')}${DEMO ? '<span class="demo">демо</span>' : ''}</div>
+        <h1>Заказ №${d.no}</h1>
+        <p class="lead">${esc(d.client)}, здесь всегда видно, где ваш заказ. Оформлен ${esc(dateText(d.date))}.</p>
+
+        <div class="card now">
+          <span class="ic">${cancelled ? '✕' : ICONS[cur] || '📦'}</span>
+          <div><div class="big">${esc(d.status)}</div><div class="when">${cancelled ? 'Заказ отменён' : 'с ' + esc(dateText(d.statusAt))}</div></div>
+        </div>
+
+        ${cancelled ? '' : `<div class="card"><h2>Путь заказа</h2><ol class="steps">${steps}</ol></div>`}
+
+        ${d.track ? `<div class="card"><h2>Трек-номер посылки</h2>
+          <div class="track"><code>${esc(d.track)}</code><button onclick="copyTrack()">Скопировать</button></div></div>` : ''}
+
+        <div class="card"><h2>Товары</h2>
+          ${d.items.map(it => `<div class="row"><span>${it.bought && !cancelled ? '✅ ' : ''}${esc(it.label)}</span><span class="money">${money(it.price)}</span></div>`).join('')}
+        </div>
+
+        <div class="card">
+          <div class="row"><span>Сумма заказа</span><span class="money">${money(d.total)}</span></div>
+          <div class="row"><span>Оплачено</span><span class="money">${money(d.paid)}</span></div>
+          <div class="row"><span>${d.debt > 0 ? 'Осталось оплатить' : 'Оплата'}</span>
+            <span class="money ${d.debt > 0 ? 'debt' : 'ok'}">${d.debt > 0 ? money(d.debt) : 'полностью ✓'}</span></div>
+        </div>
+
+        <div class="foot">Обновлено ${new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })} ·
+          <button onclick="start()">Обновить</button></div>`;
+      window.__track = d.track;
+    }
+
+    function copyTrack() {
+      navigator.clipboard.writeText(window.__track || '').then(() => alert('Трек-номер скопирован'), () => prompt('Трек-номер:', window.__track));
+    }
+
+    async function start() {
+      try {
+        render(await load());
+      } catch (err) {
+        const offline = err instanceof TypeError;
+        app.innerHTML = `<div class="empty"><b>${offline ? 'Нет связи' : 'Не получилось открыть заказ'}</b>${esc(offline ? 'Проверьте интернет и обновите страницу' : err.message)}<br><br>
+          <button onclick="start()">Попробовать ещё раз</button></div>`;
+      }
+    }
+    start();
+  </script>
+</body>
+</html>

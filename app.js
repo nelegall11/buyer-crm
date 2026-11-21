@@ -97,6 +97,7 @@ function saveCache() {
       d: {
         settings: state.settings, statuses: state.statuses, texts: state.texts, orders: state.orders,
         clients: state.clients, archived: state.archived, monthArchived: state.monthArchived,
+        notes: state.notes, reminders: state.reminders,
       },
     }));
   } catch (e) { /* хранилище недоступно или переполнено — не страшно */ }
@@ -148,6 +149,8 @@ async function loadData() {
       saveCache();
     }
     lastLoad = Date.now();
+    const deep = Number(URL_PARAMS.get('order'));
+    if (deep && !state.deepOpened && findOrder(deep)) { state.deepOpened = true; openScreen({ type: 'order', no: deep }); }
   } catch (err) {
     const denied = err.code === 'auth' || err.code === 'forbidden';
     if (state.orders.length && !denied) {
@@ -169,6 +172,8 @@ function applyInit(d) {
   state.clients = d.clients || [];
   state.archived = d.archived || 0;
   state.monthArchived = d.monthArchived || null;
+  state.notes = d.notes || {};
+  state.reminders = d.reminders || [];
   // Запоминаем, что загрузили при открытии: заказы, найденные потом в архиве, не считаем в сводке дважды
   state.baseNos = new Set(d.orders.map(o => o.no));
   state.maxNo = d.orders.reduce((m, o) => Math.max(m, o.no), 0);
@@ -337,6 +342,7 @@ function screenTitle(top) {
   if (top.type === 'parcel') return 'Пришла посылка';
   if (top.type === 'handoverList') return 'Выдать';
   if (top.type === 'handover') return 'Выдача';
+  if (top.type === 'calc') return 'Сколько стоит?';
   if (top.type === 'client') {
     const o = state.orders.find(x => clientKey(x) === top.key);
     return o ? o.client : 'Клиент';
@@ -506,6 +512,32 @@ const ACTIONS = {
   bizBar: d => { state.bizSel = Number(d.i); render(); },
   bizTable: () => { state.bizTable = !state.bizTable; render(); },
   bizRetry: () => { state.analyticsError = null; render(); },
+  openCalc: () => openScreen({ type: 'calc', amount: '', cur: '$', qty: 1, opt: false }),
+  calcCur: d => { currentScreen().cur = d.v; render(); },
+  calcOpt: d => { currentScreen().opt = d.v === '1'; render(); },
+  calcQty: d => { const t = currentScreen(); t.qty = Math.max(1, t.qty + Number(d.v)); render(); },
+  calcCopy: () => copyText(calcAnswer()),
+  calcOrder: () => {
+    const t = currentScreen();
+    state.draft = newDraft();
+    state.draft.opt = t.opt;
+    state.draft.markup = String(t.opt ? state.settings.opt : state.settings.retail);
+    state.draft.items[0].amount = String(parseNum(t.amount) || '');
+    state.draft.items[0].currency = t.cur;
+    state.draft.items[0].qty = String(t.qty);
+    saveDraft();
+    switchTab('new');
+  },
+  trackShare: d => shareTrackLink(Number(d.no)),
+  noteSheet: d => openNoteSheet(d.key, d.name, d.phone),
+  noteSave: d => saveNote(d.key, d.name, d.phone),
+  reminderSheet: d => openReminderSheet(d.no ? Number(d.no) : null, d.key || '', d.name || ''),
+  reminderWhen: d => {
+    document.querySelectorAll('[data-act="reminderWhen"]').forEach(b => b.classList.toggle('on', b.dataset.v === d.v));
+    $('#remWhen').value = toLocalInput(new Date(Number(d.v)));
+  },
+  reminderSave: d => saveReminder(d.no ? Number(d.no) : null, d.key || ''),
+  reminderDelete: d => deleteReminder(d.id),
   goalSheet: () => openGoalSheet(),
   goalSave: () => {
     const n = Math.round(parseNum($('#goalInput').value) || 0);
@@ -730,6 +762,13 @@ function onInput(e) {
   const el = e.target;
   el.classList.remove('bad');
 
+  if (el.id === 'calcAmount') {
+    currentScreen().amount = el.value;
+    $('#calcResult').innerHTML = calcResultHtml();
+    $('#calcWa').dataset.url = 'https://wa.me/?text=' + encodeURIComponent(calcAnswer());
+    return;
+  }
+
   if (el.id === 'csearch') {
     state.cquery = el.value;
     state.limit = PAGE;
@@ -946,8 +985,10 @@ function clientScreen({ key }) {
         <div><span class="hint small">Долг</span>${c.debt > 0 ? `<b class="debt money">${moneyShort(c.debt)}</b>` : '<b class="ok">нет</b>'}</div>
       </div>
     </div>
+    ${clientNoteHtml(key, c)}
     ${arrivedOf(key).length ? `<button class="btn primary" data-act="openHandover" data-key="${esc(key)}">${icon('gift')}Выдать прибывшее (${arrivedOf(key).length})</button>` : ''}
     <button class="btn ${arrivedOf(key).length ? '' : 'primary'}" data-act="newForClient" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}">${icon('plus')}Новый заказ для клиента</button>
+    <button class="btn" data-act="reminderSheet" data-key="${esc(key)}" data-name="${esc(c.name)}">${icon('bell')}Напомнить мне про клиента</button>
     ${active.length ? `<div class="section-title">В работе · ${active.length}</div><div class="list">${active.map(orderRow).join('')}</div>` : ''}
     ${closed.length ? `<div class="section-title">Завершённые · ${closed.length}</div><div class="list">${closed.map(orderRow).join('')}</div>` : ''}`;
 }
@@ -1208,6 +1249,7 @@ function clientFieldHtml(d, known) {
           <b class="ellipsis" style="display:block">${esc(d.client || 'Без имени')}</b>
           <span class="hint small">${esc(d.phone || 'без телефона')}</span>
           ${known ? `<div class="known">${icon('check')}Постоянный клиент · ${ordersWord(known.count)}</div>` : ''}
+          ${noteFor(d.client, d.phone) ? `<div class="note-line">${icon('note')}${esc(noteFor(d.client, d.phone))}</div>` : ''}
         </div>
         <button class="link-btn" data-act="unpickClient">Изменить</button>
       </div>`;
@@ -1558,6 +1600,7 @@ const SCREENS = {
   summary: summaryScreen,
   done: doneScreen,
   client: clientScreen,
+  calc: calcScreen,
   buy: buyTab,
   debts: debtsTab,
   attention: attentionScreen,
@@ -1639,7 +1682,11 @@ function orderScreen({ no }) {
       </div>
     </div>
 
-    ${receiptUrl ? `<button class="btn" data-act="open" data-url="${esc(receiptUrl)}">${icon('receipt')}Отправить чек в WhatsApp</button>` : ''}`;
+    ${receiptUrl ? `<button class="btn" data-act="open" data-url="${esc(receiptUrl)}">${icon('receipt')}Отправить чек в WhatsApp</button>` : ''}
+    <div class="btn-row">
+      <button class="btn small" data-act="trackShare" data-no="${o.no}">${icon('link')}Ссылка для клиента</button>
+      <button class="btn small" data-act="reminderSheet" data-no="${o.no}">${icon('bell')}Напомнить мне</button>
+    </div>`;
 }
 
 // ---------- Заказ сохранён ----------
@@ -2152,6 +2199,8 @@ function todayTab() {
       ${tile('ok', 'openHandoverList', null, 'Выдать', arrived.length, arrivedClients ? `${arrivedClients} клиентам` : 'пока нечего', 'gift')}
     </div>
 
+    <button class="calc-entry" data-act="openCalc">${icon('calc')}<span class="grow"><b>Сколько будет стоить?</b>
+      <span class="hint small">Посчитать цену для клиента и ответить в WhatsApp</span></span>${icon('chevron')}</button>
     <div class="quick">
       <button class="btn primary" data-act="newOrderTab">${icon('plus')}Новый заказ</button>
       <button class="btn" data-act="openParcel">Пришла посылка${parcels ? `<span class="pill-n">${parcels}</span>` : ''}</button>
@@ -2164,7 +2213,9 @@ function todayTab() {
     ${attn.length ? `<div class="list">${attn.slice(0, 5).map(attentionRow).join('')}</div>
       ${attn.length > 5 ? `<button class="btn ghost" data-act="openAttention">Показать все ${attn.length}</button>` : ''}`
       : `<div class="card row"><span class="done-ic sm">${icon('check')}</span><div><b>Всё под контролем</b>
-        <div class="hint small">Застрявших и забытых заказов нет</div></div></div>`}`;
+        <div class="hint small">Застрявших и забытых заказов нет</div></div></div>`}
+    ${remindersTodayHtml()}
+    ${birthdaysHtml()}`;
 }
 
 // =====================================================================
@@ -2713,6 +2764,274 @@ function bizSpeedHtml(rows, from) {
 }
 
 // =====================================================================
+//  КАЛЬКУЛЯТОР «СКОЛЬКО БУДЕТ СТОИТЬ?»
+//  Клиент спрашивает цену — байер вводит цену с сайта и сразу отвечает в WhatsApp
+// =====================================================================
+
+function calcNumbers() {
+  const t = currentScreen();
+  const amount = parseNum(t.amount) || 0;
+  const rate = t.cur === '€' ? state.settings.eur : state.settings.usd;
+  const markup = t.opt ? state.settings.opt : state.settings.retail;
+  const cost = amount * t.qty * rate;
+  const price = calcPrice(cost, markup, state.settings.round);
+  return { amount, rate, markup, cost, price, profit: price - cost };
+}
+
+function calcAnswer() {
+  const n = calcNumbers();
+  return fillText(state.texts.price || 'Стоимость с доставкой до Казахстана — {price}', {}, { price: money(n.price) });
+}
+
+function calcResultHtml() {
+  const t = currentScreen();
+  const n = calcNumbers();
+  if (!n.price) return `<div class="calc-big hint">Введите цену с сайта</div>`;
+  return `
+    <div class="calc-big money">${money(n.price)}</div>
+    <div class="hint small">${fmtNum(n.amount)} ${t.cur}${t.qty > 1 ? ` × ${t.qty}` : ''} × курс ${fmtNum(n.rate)} + ${fmtNum(n.markup)}% · ваша прибыль <b class="ok">${money(n.profit)}</b></div>`;
+}
+
+function calcScreen(t) {
+  return `
+    <div class="card">
+      <label class="hint small" for="calcAmount">Цена на сайте${t.qty > 1 ? ' за 1 шт' : ''}</label>
+      <div class="fields-row" style="margin-top:6px">
+        <div class="field" style="flex:1.6"><input id="calcAmount" class="input calc-input" inputmode="decimal" placeholder="0" value="${esc(t.amount)}" autocomplete="off"></div>
+        <div class="field"><div class="seg">
+          <button class="${t.cur === '$' ? 'on' : ''}" data-act="calcCur" data-v="$">$</button>
+          <button class="${t.cur === '€' ? 'on' : ''}" data-act="calcCur" data-v="€">€</button>
+        </div></div>
+      </div>
+      <div class="fields-row">
+        <div class="field"><div class="seg">
+          <button class="${t.opt ? '' : 'on'}" data-act="calcOpt" data-v="0">Розница</button>
+          <button class="${t.opt ? 'on' : ''}" data-act="calcOpt" data-v="1">Опт</button>
+        </div></div>
+        <div class="field" style="flex:.8"><div class="stepper">
+          <button data-act="calcQty" data-v="-1" aria-label="Меньше">−</button>
+          <input value="${t.qty} шт" readonly aria-label="Количество">
+          <button data-act="calcQty" data-v="1" aria-label="Больше">+</button>
+        </div></div>
+      </div>
+    </div>
+    <div class="card calc-result" id="calcResult">${calcResultHtml()}</div>
+    <button class="btn wa" data-act="open" data-url="https://wa.me/?text=${encodeURIComponent(calcAnswer())}" id="calcWa">${icon('chat')}Ответить в WhatsApp</button>
+    <div class="btn-row">
+      <button class="btn small" data-act="calcCopy">${icon('paste')}Скопировать</button>
+      <button class="btn small primary" data-act="calcOrder">${icon('plus')}Оформить заказ</button>
+    </div>
+    <p class="hint small" style="margin:10px 4px">Курс и наценка — из «Настроек» (последние, с которыми вы оформляли заказ).</p>`;
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('Скопировано — вставьте в чат с клиентом');
+  } catch (e) {
+    prompt('Скопируйте текст:', text);
+  }
+}
+
+// =====================================================================
+//  «ГДЕ МОЙ ЗАКАЗ?» — ссылка для клиента
+// =====================================================================
+
+// Страница лежит рядом с приложением: .../track.html?api=...&t=КОД (в демо — ?demo=1&t=КОД)
+function trackUrl(token) {
+  const base = location.href.split(/[?#]/)[0].replace(/[^/]*$/, '');
+  return base + 'track.html?' + (DEMO ? 'demo=1' : 'api=' + encodeURIComponent(API_URL)) + '&t=' + token;
+}
+
+async function shareTrackLink(no) {
+  const o = findOrder(no);
+  if (!o) return;
+  if (!o.token) {
+    const res = await call('trackLink', { no });
+    if (!res) return;
+    o.token = res.token;
+    saveCacheSoon();
+  }
+  const text = fillText(state.texts.track || 'Следить за заказом №{no}: {link}', o, { link: trackUrl(o.token) });
+  const url = waLink(o.phone, text);
+  openSheet('track', `
+    <h3>Ссылка для клиента</h3>
+    <p class="hint" style="margin-top:-6px">Клиент увидит статус своего заказа, товары и трек-номер — без ваших данных и чужих заказов. Ссылка уже есть в чеке.</p>
+    <div class="receipt small" style="word-break:break-all">${esc(trackUrl(o.token))}</div>
+    ${url ? `<button class="btn wa" data-act="open" data-url="${esc(url)}" style="margin-top:12px">${icon('chat')}Отправить ${esc(o.client)}</button>` : ''}
+    <div class="btn-row">
+      <button class="btn small" data-act="open" data-url="${esc(trackUrl(o.token))}">${icon('external')}Посмотреть</button>
+      <button class="btn small" data-act="trackCopy" data-text="${esc(text)}">${icon('paste')}Скопировать</button>
+    </div>`);
+}
+ACTIONS.trackCopy = d => copyText(d.text);
+
+// =====================================================================
+//  ЗАМЕТКИ О КЛИЕНТЕ: размеры, вкусы, день рождения
+// =====================================================================
+
+function noteOf(key) { return (state.notes || {})[key] || { note: '', birthday: '' }; }
+
+function noteFor(name, phone) {
+  if (!name && !phone) return '';
+  return noteOf(clientKey({ client: name || '', phone: phone || '' })).note;
+}
+
+function clientNoteHtml(key, c) {
+  const n = noteOf(key);
+  const bd = n.birthday ? birthdayIn(n.birthday) : null;
+  return `
+    <div class="card note-card" data-act="noteSheet" data-key="${esc(key)}" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}">
+      <div class="row between"><b>${icon('note')} Заметки</b><span class="link-btn" style="padding:0">${n.note || n.birthday ? 'Изменить' : 'Добавить'}</span></div>
+      ${n.note ? `<div class="note-text">${esc(n.note)}</div>` : `<div class="hint small">Размеры, любимые бренды, что не нравится — чтобы не спрашивать каждый раз</div>`}
+      ${n.birthday ? `<div class="small" style="margin-top:6px">${icon('cake')} День рождения ${esc(n.birthday)}${bd === 0 ? ' — <b class="ok">сегодня!</b>' : bd !== null && bd <= 7 ? ` — через ${daysWord(bd)}` : ''}</div>` : ''}
+    </div>`;
+}
+
+function openNoteSheet(key, name, phone) {
+  const n = noteOf(key);
+  openSheet('note', `
+    <h3>Заметки · ${esc(name)}</h3>
+    <textarea id="noteText" class="input" placeholder="Например: обувь 38, одежда M, любит бежевый, не любит синее">${esc(n.note)}</textarea>
+    <label class="hint small" for="noteBd" style="display:block;margin:10px 2px 4px">День рождения (дд.мм) — приложение напомнит поздравить</label>
+    <input id="noteBd" class="input" inputmode="numeric" placeholder="14.03" value="${esc(n.birthday)}" autocomplete="off">
+    <button class="btn primary" data-act="noteSave" data-key="${esc(key)}" data-name="${esc(name)}" data-phone="${esc(phone)}" style="margin-top:10px">Сохранить</button>`);
+  setTimeout(() => $('#noteText') && $('#noteText').focus(), 100);
+}
+
+function saveNote(key, name, phone) {
+  const note = ($('#noteText').value || '').trim();
+  let birthday = ($('#noteBd').value || '').trim().replace(/[\/,\-\s]/g, '.');
+  if (birthday) {
+    const m = birthday.match(/^(\d{1,2})\.(\d{1,2})$/);
+    if (!m || +m[1] < 1 || +m[1] > 31 || +m[2] < 1 || +m[2] > 12) { $('#noteBd').classList.add('bad'); toast('День рождения — в виде дд.мм, например 14.03', true); return; }
+    birthday = m[1].padStart(2, '0') + '.' + m[2].padStart(2, '0');
+  }
+  const before = state.notes[key];
+  state.notes = Object.assign({}, state.notes, { [key]: { note, birthday } });
+  closeSheet(false);
+  render();
+  toast('Заметка сохранена');
+  saveCacheSoon();
+  queueSync('saveNote', { key, name, phone, note, birthday }, () => { state.notes[key] = before; });
+}
+
+// Через сколько дней день рождения (0 — сегодня)
+function birthdayIn(ddmm) {
+  const [d, m] = ddmm.split('.').map(Number);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  let next = new Date(now.getFullYear(), m - 1, d);
+  if (next < today) next = new Date(now.getFullYear() + 1, m - 1, d);
+  return Math.round((next - today) / 86400000);
+}
+
+function birthdaysHtml() {
+  const clients = groupByClient(state.orders);
+  const list = Object.keys(state.notes || {}).map(key => {
+    const n = state.notes[key];
+    if (!n.birthday) return null;
+    const days = birthdayIn(n.birthday);
+    if (days > 7) return null;
+    const c = clients.find(x => x.key === key) || (state.clients || []).map(x => ({ key: clientKey({ client: x.name, phone: x.phone }), ...x })).find(x => x.key === key);
+    return c ? { key, name: c.name, phone: c.phone, days } : null;
+  }).filter(Boolean).sort((a, b) => a.days - b.days);
+  if (!list.length) return '';
+  return `
+    <div class="section-title">Дни рождения</div>
+    <div class="list">${list.map(b => {
+      const url = waLink(b.phone, fillText(state.texts.birthday || '{client}, с днём рождения! 🎂', { client: b.name.split(' ')[0], no: '', debt: 0, track: '' }));
+      return `
+        <div class="lrow">
+          <span class="ava">${icon('cake')}</span>
+          <div class="grow" data-act="openClient" data-key="${esc(b.key)}">
+            <div class="l1"><span class="name ellipsis">${esc(b.name)}</span></div>
+            <div class="l2">${b.days === 0 ? '<b class="ok">сегодня</b>' : b.days === 1 ? 'завтра' : `через ${daysWord(b.days)}`}</div>
+          </div>
+          ${url && b.days === 0 ? `<button class="btn small wa" data-act="open" data-url="${esc(url)}">${icon('chat')}Поздравить</button>` : ''}
+        </div>`;
+    }).join('')}</div>`;
+}
+
+// =====================================================================
+//  «НАПОМНИ МНЕ» — бот пришлёт сообщение в нужное время
+// =====================================================================
+
+function toLocalInput(d) {
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function openReminderSheet(no, key, name) {
+  const o = no ? findOrder(no) : null;
+  const who = o ? `№${o.no} ${o.client}` : name;
+  const at = (days, h, m = 0) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.getTime(); };
+  const now = new Date();
+  const options = [
+    ['Через час', Date.now() + 3600000],
+    [now.getHours() < 19 ? 'Сегодня в 20:00' : 'Завтра в 20:00', now.getHours() < 19 ? at(0, 20) : at(1, 20)],
+    ['Завтра в 10:00', at(1, 10)],
+    ['Через 3 дня', at(3, 10)],
+  ];
+  openSheet('reminder', `
+    <h3>Напомнить мне</h3>
+    <input id="remText" class="input" value="${esc(who ? who + ': ' : '')}" placeholder="О чём напомнить" autocomplete="off">
+    <div class="chips wrap-chips" style="margin-top:10px">${options.map(([label, t], i) =>
+      `<button class="chip ${i === 2 ? 'on' : ''}" data-act="reminderWhen" data-v="${t}">${label}</button>`).join('')}</div>
+    <input id="remWhen" class="input" type="datetime-local" value="${toLocalInput(new Date(options[2][1]))}" style="margin-top:4px">
+    <button class="btn primary" data-act="reminderSave" data-no="${no || ''}" data-key="${esc(key)}" style="margin-top:10px">${icon('bell')}Напомнить</button>
+    <p class="hint small" style="margin:8px 2px 0">Бот пришлёт сообщение в это время${o ? ' с кнопкой «Открыть заказ»' : ''}.</p>`);
+  setTimeout(() => { const el = $('#remText'); if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 100);
+}
+
+function saveReminder(no, key) {
+  const text = ($('#remText').value || '').trim();
+  const when = new Date($('#remWhen').value);
+  if (!text) {
+    $('#remText').classList.add('bad');
+    toast('Напишите, о чём напомнить', true);
+    return;
+  }
+  if (isNaN(when) || when < Date.now() - 60000) { $('#remWhen').classList.add('bad'); toast('Выберите время в будущем', true); return; }
+  const r = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), when: when.toISOString(), text, no, key };
+  state.reminders = (state.reminders || []).concat(r);
+  closeSheet(false);
+  render();
+  haptic('success');
+  toast(`Напомню ${when.toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}` + (DEMO ? ' (в демо бот не пишет)' : ''));
+  saveCacheSoon();
+  queueSync('addReminder', { reminder: r }, () => { state.reminders = state.reminders.filter(x => x.id !== r.id); });
+}
+
+function deleteReminder(id) {
+  const r = (state.reminders || []).find(x => x.id === id);
+  if (!r) return;
+  state.reminders = state.reminders.filter(x => x.id !== id);
+  render();
+  saveCacheSoon();
+  queueSync('deleteReminder', { id }, () => { state.reminders = state.reminders.concat(r); });
+}
+
+function remindersTodayHtml() {
+  const list = (state.reminders || []).slice().sort((a, b) => new Date(a.when) - new Date(b.when)).slice(0, 5);
+  if (!list.length) return '';
+  return `
+    <div class="section-title">Мои напоминания</div>
+    <div class="list">${list.map(r => {
+      const due = new Date(r.when) <= Date.now();
+      return `
+        <div class="lrow ${due ? 'due' : ''}">
+          <span class="ava">${icon('bell')}</span>
+          <div class="grow" ${r.no ? `data-act="openOrder" data-no="${r.no}"` : r.key ? `data-act="openClient" data-key="${esc(r.key)}"` : ''}>
+            <div class="l1"><span class="name ellipsis">${esc(r.text)}</span></div>
+            <div class="l2">${due ? '<b class="warn-text">пора</b> · ' : ''}${new Date(r.when).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
+          </div>
+          <button class="icon-btn soft del-btn" data-act="reminderDelete" data-id="${esc(r.id)}" aria-label="${due ? 'Готово' : 'Удалить'}">${due ? '✓' : '✕'}</button>
+        </div>`;
+    }).join('')}</div>`;
+}
+
+// =====================================================================
 //  ВКЛАДКА «КЛИЕНТЫ»
 // =====================================================================
 
@@ -2741,8 +3060,9 @@ function clientsListHtml() {
 //  ТЕКСТЫ ДЛЯ КЛИЕНТА И WHATSAPP
 // =====================================================================
 
-function fillText(tpl, o) {
+function fillText(tpl, o, extra) {
   if (!tpl) return '';
+  Object.keys(extra || {}).forEach(k => { tpl = tpl.split('{' + k + '}').join(extra[k]); });
   return tpl
     .replace(/\{client\}/g, o.client)
     .replace(/\{no\}/g, o.no)
@@ -2765,6 +3085,7 @@ function receiptText(o) {
   o.items.forEach((x, i) => lines.push(`${i + 1}. ${itemLabel(x)} — ${money(x.price)}`));
   lines.push('', `Итого: ${money(o.total)}`, `Оплачено: ${money(o.paid)}`);
   if (o.debt > 0) lines.push(`Осталось оплатить: ${money(o.debt)}`);
+  if (o.token) lines.push('', `Следить за заказом: ${trackUrl(o.token)}`);
   return lines.join('\n');
 }
 
@@ -2851,6 +3172,11 @@ const ICONS = {
   external: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
   chevron: '<path d="M9 6l6 6-6 6"/>',
+  calc: '<rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15v3M8 18h.01M12 18h.01"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  bell: '<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 7.5 2.5 7.5h-17S6 15 6 9M10 20a2 2 0 0 0 4 0"/>',
+  note: '<path d="M5 4h14v12l-4 4H5zM15 20v-4h4M8 8h8M8 12h5"/>',
+  cake: '<path d="M4 21h16M5 21v-8h14v8M4 17c2 1 3 0 4-1 1 1 3 2 4 0 1 2 3 1 4 0 1 1 2 2 4 1M12 13V9M12 6.5c-1-1 0-2.5 0-2.5s1 1.5 0 2.5"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   inbox: '<path d="M4 13l2.5-8h11L20 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 13h4.5l1 2h5l1-2H20"/>',
   offline: '<path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.5-2.8M19 13a10 10 0 0 0-2.4-1.7M2 9.5a15 15 0 0 1 4.3-2.6M22 9.5A15 15 0 0 0 11 5.6"/><path d="M12 20h.01"/>',

@@ -10,7 +10,7 @@
 // =====================================================================
 
 const DemoServer = (() => {
-  const KEY = 'buyercrm-demo-v9';
+  const KEY = 'buyercrm-demo-v11';
   const HISTORY_COUNT = 220; // старые выданные заказы за год — для вкладки «Бизнес»
   const ORDER_COUNT = 100;
   const ARCHIVE_DAYS = 30; // выданные заказы старше 30 дней без долга не загружаем сразу
@@ -41,6 +41,9 @@ const DemoServer = (() => {
     done: '{client}, спасибо за заказ! Будем рады видеть вас снова 💛',
     remind: 'Здравствуйте, {client}! Напоминаем про оплату по заказу №{no}: осталось {debt}. Спасибо 🙏',
     comeback: 'Здравствуйте, {client}! Давно не виделись 🙂 Если что-то присмотрели — пишите, выкупим.',
+    price: 'Здравствуйте! Стоимость с доставкой до Казахстана — {price} 🙂 Оформляем?',
+    birthday: '{client}, с днём рождения! 🎂 Желаем радости, тепла и красивых покупок 💛',
+    track: 'Следить за заказом №{no}: {link}',
   };
 
   // ---------- Выдуманные клиенты и магазины ----------
@@ -141,7 +144,7 @@ const DemoServer = (() => {
       if (status === DONE) statusAt = new Date(Math.min(Date.now() - 3600000, date.getTime() + (16 + Math.round(r() * 20)) * 86400000));
       const o = {
         no, date: date.toISOString(), client, phone, opt, comment: '', paid: 0,
-        status: STATUSES[status], statusAt: statusAt.toISOString(), snoozeUntil: '',
+        status: STATUSES[status], statusAt: statusAt.toISOString(), snoozeUntil: '', token: newToken(r),
         // Заказы, отправленные в одни дни, едут одной посылкой — у них общий трек-номер
         track: status >= WAY && status <= DONE ? `DM${100000000 + Math.floor(daysAgo / 4) * 7919}US` : '',
         items: raw.map(it => {
@@ -153,13 +156,37 @@ const DemoServer = (() => {
 
       // Оплата: обычно всё сразу, иногда часть
       if (status === WAIT || status === CANCEL) o.paid = 0;
-      else if (r() < (status === DONE ? 0.96 : 0.75)) o.paid = o.total;
+      else if (daysAgo > 60 || r() < (status === DONE ? 0.96 : 0.75)) o.paid = o.total;
       else o.paid = Math.round(o.total * (0.3 + r() * 0.4) / 1000) * 1000;
       recalc(o);
       data.orders.push(o);
     }
     data.expenses = buildExpenses(r);
+    data.notes = buildNotes(data);
+    data.reminders = [];
     return data;
+  }
+
+  function newToken(r) {
+    let t = '';
+    while (t.length < 24) t += Math.floor((r ? r() : Math.random()) * 36).toString(36);
+    return t;
+  }
+
+  // Заметки о нескольких клиентах: размеры, вкусы, дни рождения (два — в ближайшие дни, чтобы было видно)
+  function buildNotes(data) {
+    const notes = {};
+    const pick = name => data.orders.find(o => o.client === name);
+    const add = (name, note, daysFromNow) => {
+      const o = pick(name);
+      if (!o) return;
+      const d = new Date(Date.now() + daysFromNow * 86400000);
+      notes[clientKey(o)] = { note, birthday: daysFromNow === null ? '' : `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')}` };
+    };
+    add('Алия С.', 'Обувь 38, одежда M. Не любит синее. Платит всегда в срок', 0);
+    add('Дана К.', 'Обувь 37, одежда S. Любит бежевый и пастель', 3);
+    add('Марат А.', 'Одежда L, обувь 43. Покупает себе и сыну (рост 110)', null);
+    return notes;
   }
 
   // Выдуманные расходы за год: доставка форвардера, комиссии, упаковка, реклама
@@ -260,7 +287,49 @@ const DemoServer = (() => {
           profit: thisMonth.reduce((a, o) => a + o.profit, 0),
         },
         clients: [...clients.values()].sort((a, b) => b.last - a.last),
+        notes: db.notes || {},
+        reminders: (db.reminders || []).filter(r => !r.sent),
       };
+    },
+
+    // Страница «Где мой заказ?» для клиента — по секретному коду
+    track({ t }) {
+      const o = db.orders.find(x => x.token && x.token === String(t));
+      if (!o) throw new Error('Заказ не найден. Возможно, ссылка устарела — попросите новую');
+      return {
+        shop: db.settings.shopName, no: o.no, date: o.date, client: o.client.split(' ')[0],
+        status: o.status, statusIdx: STATUSES.indexOf(o.status), statuses: STATUSES, statusAt: o.statusAt,
+        track: o.track, total: o.total, paid: o.paid, debt: Math.max(0, o.debt),
+        items: o.items.map(it => {
+          const m = String(it.link).match(/https?:\/\/(?:www\.)?([^\/\s?#]+)/i);
+          const name = [m ? m[1] : it.link, it.size].filter(Boolean).join(' · ') || 'Товар';
+          return { label: it.qty > 1 ? `${name} × ${it.qty}` : name, price: it.price, bought: it.bought };
+        }),
+      };
+    },
+
+    trackLink({ no }) {
+      const o = find(no);
+      if (!o.token) o.token = newToken();
+      return { token: o.token };
+    },
+
+    saveNote({ key, note, birthday }) {
+      if (birthday && !/^\d{1,2}\.\d{1,2}$/.test(birthday)) throw new Error('День рождения — в виде дд.мм, например 14.03');
+      db.notes = db.notes || {};
+      db.notes[key] = { note: note || '', birthday: birthday || '' };
+      return { ok: true };
+    },
+
+    addReminder({ reminder }) {
+      db.reminders = db.reminders || [];
+      db.reminders.push({ ...reminder, sent: '' });
+      return { id: reminder.id };
+    },
+
+    deleteReminder({ id }) {
+      db.reminders = (db.reminders || []).filter(r => r.id !== id);
+      return { ok: true };
     },
 
     // Поиск по всем заказам, включая архив
@@ -290,7 +359,7 @@ const DemoServer = (() => {
 
       const o = {
         no: db.nextNo++, date: new Date().toISOString(), client, phone: String(order.phone || '').trim(),
-        opt: !!order.opt, track: '', comment: '', paid: 0,
+        opt: !!order.opt, track: '', comment: '', paid: 0, token: newToken(),
         items: items.map(x => {
           const rate = rates[x.currency === '€' ? '€' : '$'];
           if (!(rate > 0)) throw new Error(`Не указан курс ${x.currency}`);
@@ -416,6 +485,8 @@ const DemoServer = (() => {
 
   function load() {
     try {
+      // Убираем демо-данные прошлых версий, чтобы не занимали место
+      Object.keys(localStorage).filter(k => k.startsWith('buyercrm-demo-') && k !== KEY).forEach(k => localStorage.removeItem(k));
       const saved = localStorage.getItem(KEY);
       if (saved) { db = JSON.parse(saved); return; }
     } catch (e) { /* в приватном режиме хранилище может быть недоступно — не страшно */ }

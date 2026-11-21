@@ -624,3 +624,24 @@ a.icon-btn { text-decoration: none; }
 .hbar .track span.muted { background: var(--hint); }
 .wrap-chips { flex-wrap: wrap; overflow: visible; margin: 0; padding: 0; }
 .del-btn { min-width: 34px; height: 34px; font-size: 14px; color: var(--hint); }
+
+
+/* Калькулятор */
+.calc-entry {
+  display: flex; align-items: center; gap: 12px; width: 100%; margin-bottom: 8px; padding: 12px 14px;
+  border: 0; border-radius: var(--radius); background: var(--bg); text-align: left; color: var(--text);
+}
+.calc-entry > .ic:first-child { width: 26px; height: 26px; color: var(--btn); }
+.calc-entry b { display: block; }
+.calc-input { font-size: 24px; height: 56px; font-weight: 700; }
+.calc-result { text-align: center; }
+.calc-big { font-size: 34px; font-weight: 800; margin: 4px 0; }
+
+/* Заметки, напоминания */
+.note-card { cursor: pointer; }
+.note-card b .ic, .note-card .small .ic { width: 17px; height: 17px; vertical-align: -3px; color: var(--hint); }
+.note-text { margin-top: 6px; white-space: pre-wrap; }
+.note-line { display: flex; gap: 6px; align-items: flex-start; margin-top: 4px; font-size: 13px; color: var(--hint); }
+.note-line .ic { width: 16px; height: 16px; flex: none; margin-top: 1px; }
+.lrow.due { background: rgba(245, 165, 36, .1); }
+textarea.input { min-height: 90px; }
