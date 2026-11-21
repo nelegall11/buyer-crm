@@ -10,7 +10,7 @@
 // =====================================================================
 
 const DemoServer = (() => {
-  const KEY = 'buyercrm-demo-v11';
+  const KEY = 'buyercrm-demo-v13';
   const HISTORY_COUNT = 220; // старые выданные заказы за год — для вкладки «Бизнес»
   const ORDER_COUNT = 100;
   const ARCHIVE_DAYS = 30; // выданные заказы старше 30 дней без долга не загружаем сразу
@@ -23,6 +23,8 @@ const DemoServer = (() => {
     opt: 15,
     round: 100,
     goal: 4500000, // цель выручки на месяц
+    paymentDetails: 'Kaspi Gold +7 700 000 00 00 (демо)',
+    taxRate: 4,
     // Через сколько дней заказ попадает в «Требует внимания»
     attention: { wait: 3, paid: 3, way: 25, arrived: 5 },
   };
@@ -44,6 +46,7 @@ const DemoServer = (() => {
     price: 'Здравствуйте! Стоимость с доставкой до Казахстана — {price} 🙂 Оформляем?',
     birthday: '{client}, с днём рождения! 🎂 Желаем радости, тепла и красивых покупок 💛',
     track: 'Следить за заказом №{no}: {link}',
+    payment: 'Оплатить можно сюда: {details}. Сумма: {debt} 🙏',
   };
 
   // ---------- Выдуманные клиенты и магазины ----------
@@ -197,7 +200,7 @@ const DemoServer = (() => {
       d.setHours(12, 0, 0, 0);
       list.push({ id: 'e' + list.length, date: d.toISOString(), amount: Math.round(amount / 100) * 100, category, note });
     };
-    for (let d = 360; d >= 0; d -= 4 + Math.floor(r() * 4)) add(d, 35000 + r() * (d < 90 ? 70000 : 40000), 'Доставка', 'Посылка от форвардера');
+    for (let d = 360; d >= 0; d -= 6 + Math.floor(r() * 4)) add(d, 22000 + r() * (d < 90 ? 30000 : 20000), 'Доставка', 'Посылка от форвардера');
     for (let m = 0; m < 12; m++) {
       add(m * 30 + 2, 15000 + r() * 30000, 'Комиссии', 'Kaspi и банк');
       add(m * 30 + 9, 8000 + r() * 9000, 'Упаковка', 'Пакеты и коробки');
@@ -277,7 +280,7 @@ const DemoServer = (() => {
         if (o.no > c.last) { c.last = o.no; c.name = o.client; c.phone = o.phone; }
       });
       return {
-        settings: db.settings, statuses: STATUSES, texts: TEXTS, demo: true,
+        settings: db.settings, statuses: STATUSES, texts: { ...TEXTS, ...(db.texts || {}) }, defaultTexts: TEXTS, demo: true,
         orders: db.orders.filter(o => !isArchived(o)),
         archived: archived.length,
         // Итоги месяца по незагруженным заказам — чтобы «Сводка» считала правильно
@@ -470,6 +473,17 @@ const DemoServer = (() => {
     deleteExpense({ id }) {
       db.expenses = (db.expenses || []).filter(e => e.id !== id);
       return { ok: true };
+    },
+
+    saveSettings({ settings, texts }) {
+      Object.assign(db.settings, settings || {});
+      db.texts = db.texts || {};
+      Object.keys(texts || {}).forEach(k => {
+        if (!TEXTS[k]) return;
+        const t = String(texts[k] || '').trim();
+        if (!t || t === TEXTS[k]) delete db.texts[k]; else db.texts[k] = t;
+      });
+      return { settings: db.settings, texts: { ...TEXTS, ...db.texts } };
     },
 
     setGoal({ goal }) {

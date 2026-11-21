@@ -95,7 +95,7 @@ function saveCache() {
     localStorage.setItem(CACHE_KEY, JSON.stringify({
       at: Date.now(),
       d: {
-        settings: state.settings, statuses: state.statuses, texts: state.texts, orders: state.orders,
+        settings: state.settings, statuses: state.statuses, texts: state.texts, defaultTexts: state.defaultTexts, orders: state.orders,
         clients: state.clients, archived: state.archived, monthArchived: state.monthArchived,
         notes: state.notes, reminders: state.reminders,
       },
@@ -121,6 +121,7 @@ function applyAll(d) {
   state.settings = d.settings;
   state.statuses = d.statuses;
   state.texts = d.texts;
+  state.defaultTexts = d.defaultTexts || state.defaultTexts || d.texts;
   applyInit(d);
   if (!state.draft) state.draft = loadDraft() || newDraft();
 }
@@ -321,6 +322,7 @@ function render() {
   document.body.classList.toggle('overlay', !!top);
   $('#title').textContent = top ? screenTitle(top) : TAB_TITLES[state.tab];
   $('#backBtn').hidden = IN_TG || !top;
+  $('#setBtn').hidden = !!top || state.loading || !!state.error;
 
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === state.tab));
   if (!state.loading && !state.error) {
@@ -343,6 +345,7 @@ function screenTitle(top) {
   if (top.type === 'handoverList') return 'Выдать';
   if (top.type === 'handover') return 'Выдача';
   if (top.type === 'calc') return 'Сколько стоит?';
+  if (top.type === 'settings') return 'Настройки';
   if (top.type === 'client') {
     const o = state.orders.find(x => clientKey(x) === top.key);
     return o ? o.client : 'Клиент';
@@ -384,6 +387,10 @@ function updateMainButton() {
   let text = null;
   mainAction = null;
 
+  if (!state.loading && !state.error && top && top.type === 'settings' && top.dirty) {
+    text = 'Сохранить настройки';
+    mainAction = saveSettings;
+  }
   if (!state.loading && !state.error && top && top.type === 'handover') {
     const n = handoverSel(top).length;
     if (n) { text = `Выдать ${ordersWord(n)}`; mainAction = applyHandover; }
@@ -436,6 +443,8 @@ function openScreen(screen) {
 
 function goBack() {
   if (state.sheet) return closeSheet();
+  const top = currentScreen();
+  if (top && top.type === 'settings' && top.dirty && !confirm('Выйти без сохранения?')) return;
   state.stack.pop();
   render();
   animateView('back');
@@ -512,6 +521,32 @@ const ACTIONS = {
   bizBar: d => { state.bizSel = Number(d.i); render(); },
   bizTable: () => { state.bizTable = !state.bizTable; render(); },
   bizRetry: () => { state.analyticsError = null; render(); },
+  openSettings: () => {
+    const st = state.settings;
+    openScreen({
+      type: 'settings', dirty: false, open: null,
+      form: {
+        shopName: st.shopName || '', paymentDetails: st.paymentDetails || '',
+        retail: st.retail, opt: st.opt, round: st.round, usd: st.usd, eur: st.eur,
+        goal: st.goal || '', taxRate: st.taxRate || 0,
+        attention: Object.assign({ wait: 3, paid: 3, way: 25, arrived: 5 }, st.attention || {}),
+        texts: Object.assign({}, state.texts),
+      },
+    });
+  },
+  textOpen: d => { const t = currentScreen(); t.open = t.open === d.k ? null : d.k; render(); },
+  textReset: d => {
+    const t = currentScreen();
+    t.form.texts[d.k] = (state.defaultTexts || {})[d.k] || '';
+    t.dirty = true;
+    render();
+  },
+  settingsSave: () => saveSettings(),
+  sendDetails: d => {
+    const o = findOrder(Number(d.no));
+    const url = o && waLink(o.phone, fillText(state.texts.payment || 'Оплатить можно сюда: {details}. Сумма: {debt}', o, { details: state.settings.paymentDetails }));
+    if (url) openLink(url);
+  },
   openCalc: () => openScreen({ type: 'calc', amount: '', cur: '$', qty: 1, opt: false }),
   calcCur: d => { currentScreen().cur = d.v; render(); },
   calcOpt: d => { currentScreen().opt = d.v === '1'; render(); },
@@ -761,6 +796,19 @@ const ACTIONS = {
 function onInput(e) {
   const el = e.target;
   el.classList.remove('bad');
+
+  if (el.dataset.sf || el.dataset.sa || el.dataset.st) {
+    const t = currentScreen();
+    if (el.dataset.sf) t.form[el.dataset.sf] = el.value;
+    if (el.dataset.sa) t.form.attention[el.dataset.sa] = el.value;
+    if (el.dataset.st) {
+      t.form.texts[el.dataset.st] = el.value;
+      const ex = $('#ex-' + el.dataset.st);
+      if (ex) ex.textContent = sampleText(el.value);
+    }
+    if (!t.dirty) { t.dirty = true; updateMainButton(); }
+    return;
+  }
 
   if (el.id === 'calcAmount') {
     currentScreen().amount = el.value;
@@ -1601,6 +1649,7 @@ const SCREENS = {
   done: doneScreen,
   client: clientScreen,
   calc: calcScreen,
+  settings: settingsScreen,
   buy: buyTab,
   debts: debtsTab,
   attention: attentionScreen,
@@ -1848,7 +1897,9 @@ function openPaymentSheet(no) {
       <input id="payInput" class="input grow" inputmode="decimal" placeholder="Сумма, ₸">
       <button class="btn small" data-act="paySubmit" data-no="${o.no}">Внести</button>
     </div>
-    ${remind ? `<button class="btn wa" data-act="open" data-url="${esc(remind)}" style="margin-top:16px">${icon('chat')}Напомнить в WhatsApp</button>` : ''}`);
+    ${remind ? `<button class="btn wa" data-act="open" data-url="${esc(remind)}" style="margin-top:16px">${icon('chat')}Напомнить в WhatsApp</button>` : ''}
+    ${state.settings.paymentDetails && o.phone ? `<button class="btn" data-act="sendDetails" data-no="${o.no}">${icon('cash')}Отправить реквизиты</button>`
+      : !state.settings.paymentDetails ? `<p class="hint small" style="margin:10px 2px 0">Укажите реквизиты в ⚙️ Настройках — и их можно будет отправить клиенту одной кнопкой.</p>` : ''}`);
 }
 
 function addPayment(no, amount) {
@@ -2400,6 +2451,7 @@ function bizTab() {
     </div>
 
     ${bizNetHtml(prof, from)}
+    ${bizSalaryHtml(rev, prof, from)}
     ${bizMoneyHtml()}
     ${bizDebtAgeHtml()}
     ${bizFunnelHtml()}
@@ -2619,6 +2671,32 @@ function deleteExpense(id) {
   state.expenses = state.expenses.filter(x => x.id !== id);
   render();
   queueSync('deleteExpense', { id }, () => { state.expenses = state.expenses.concat(e); });
+}
+
+// ---------- «Можно взять себе»: сколько из заработанного — ваши деньги ----------
+
+function bizSalaryHtml(revenue, profit, from) {
+  const expenses = (state.expenses || []).filter(e => new Date(e.date).getTime() >= from).reduce((a, e) => a + e.amount, 0);
+  const rate = Number(state.settings.taxRate) || 0;
+  const tax = Math.round(revenue * rate / 100);
+  const salary = profit - expenses - tax;
+  // Деньги клиентов на ещё не выкупленные товары — они не ваши, их нельзя тратить
+  const reserve = state.orders
+    .filter(o => statusIdx(o.status) === S.PAID || statusIdx(o.status) === S.WAIT)
+    .reduce((a, o) => a + Math.min(o.paid, o.items.filter(x => !x.bought).reduce((s, x) => s + (x.cost || 0), 0)), 0);
+  return `
+    <div class="section-title">Можно взять себе</div>
+    <div class="card salary-card">
+      <div class="lines">
+        <div><span>Чистая прибыль</span><span class="money">${money(profit - expenses)}</span></div>
+        <div><span>Налог ${rate ? `${fmtNum(rate)}% от выручки` : ''}</span>${rate
+          ? `<span class="money">− ${money(tax)}</span>`
+          : `<button class="link-btn" data-act="openSettings" style="padding:0">указать ставку</button>`}</div>
+        <div><span class="big">Ваша зарплата</span><b class="big money ${salary >= 0 ? 'ok' : 'debt'}">${money(Math.max(0, salary))}</b></div>
+      </div>
+      ${reserve > 0 ? `<div class="reserve">${icon('lock')}<span>Не тратьте ещё <b class="money">${money(reserve)}</b> — клиенты уже заплатили, а товары пока не выкуплены</span></div>` : ''}
+      ${salary < 0 ? `<p class="hint small" style="margin:8px 0 0">Расходы и налог больше прибыли за этот период.</p>` : ''}
+    </div>`;
 }
 
 // ---------- Деньги прямо сейчас ----------
@@ -3029,6 +3107,140 @@ function remindersTodayHtml() {
           <button class="icon-btn soft del-btn" data-act="reminderDelete" data-id="${esc(r.id)}" aria-label="${due ? 'Готово' : 'Удалить'}">${due ? '✓' : '✕'}</button>
         </div>`;
     }).join('')}</div>`;
+}
+
+// =====================================================================
+//  НАСТРОЙКИ — всё, что байер меняет под себя, без Google-таблицы
+// =====================================================================
+
+const TEXT_INFO = {
+  paid: ['Оплата получена', '{client} {no}'],
+  bought: ['Заказ выкуплен', '{client} {no}'],
+  stock: ['Заказ на складе', '{client} {no}'],
+  way: ['Заказ в пути', '{client} {no} {track_line}'],
+  arrived: ['Заказ прибыл', '{client} {no} {debt_line}'],
+  done: ['Заказ выдан — спасибо', '{client} {no}'],
+  remind: ['Напоминание об оплате', '{client} {no} {debt}'],
+  payment: ['Реквизиты для оплаты', '{details} {debt}'],
+  price: ['Ответ «Сколько стоит?»', '{price}'],
+  track: ['Ссылка «Где мой заказ?»', '{no} {link}'],
+  comeback: ['Давно не заказывал', '{client}'],
+  birthday: ['С днём рождения', '{client}'],
+};
+
+// Пример текста на выдуманном заказе — чтобы было видно, что получит клиент
+function sampleText(tpl) {
+  const o = { client: 'Алия', no: 125, debt: 12000, track: 'DM123456789US' };
+  return fillText(tpl, o, { price: money(57900), link: 'https://…/track.html', details: state.settings.paymentDetails || 'Kaspi +7 7…' });
+}
+
+function settingsScreen(t) {
+  const f = t.form;
+  const field = (key, label, attrs = '', hint = '') => `
+    <div class="field"><label>${label}</label>
+      <input class="input" data-sf="${key}" value="${esc(f[key])}" ${attrs} autocomplete="off">
+      ${hint ? `<div class="hint small" style="margin:4px 2px 0">${hint}</div>` : ''}</div>`;
+  const days = (key, label) => `
+    <div class="field"><label>${label}</label>
+      <input class="input" data-sa="${key}" inputmode="numeric" value="${esc(f.attention[key])}"></div>`;
+  const keys = Object.keys(TEXT_INFO).filter(k => f.texts[k] !== undefined || (state.defaultTexts || {})[k]);
+
+  return `
+    <div class="section-title">Магазин</div>
+    <div class="card">
+      ${field('shopName', 'Название магазина', 'placeholder="Например, Aliya Shop"', 'Показывается в чеке и на странице «Где мой заказ?»')}
+      ${field('paymentDetails', 'Реквизиты для оплаты', 'placeholder="Kaspi Gold +7 701 000 00 00 (Алия С.)"', 'Отправляются клиенту кнопкой «Отправить реквизиты»')}
+    </div>
+
+    <div class="section-title">Цены</div>
+    <div class="card">
+      <div class="fields-row">
+        ${field('retail', 'Наценка розница, %', 'inputmode="decimal"')}
+        ${field('opt', 'Наценка опт, %', 'inputmode="decimal"')}
+      </div>
+      <div class="fields-row">
+        ${field('usd', 'Курс $, ₸', 'inputmode="decimal"')}
+        ${field('eur', 'Курс €, ₸', 'inputmode="decimal"')}
+        ${field('round', 'Шаг цены, ₸', 'inputmode="numeric"')}
+      </div>
+      <div class="hint small">Курс меняется и сам — каждый раз, когда вы оформляете заказ с новым курсом.</div>
+    </div>
+
+    <div class="section-title">Деньги</div>
+    <div class="card">
+      <div class="fields-row">
+        ${field('goal', 'Цель на месяц, ₸', 'inputmode="numeric" placeholder="5 000 000"')}
+        ${field('taxRate', 'Налог, % от выручки', 'inputmode="decimal"')}
+      </div>
+      <div class="hint small">Налог нужен для «Можно взять себе». Свою ставку уточните у бухгалтера.</div>
+    </div>
+
+    <div class="section-title">«Требует внимания» — через сколько дней</div>
+    <div class="card">
+      <div class="fields-row">${days('wait', 'Не оплачен')}${days('paid', 'Не выкуплен')}</div>
+      <div class="fields-row">${days('way', 'Долго в пути')}${days('arrived', 'Не забирают')}</div>
+    </div>
+
+    <div class="section-title">Сообщения клиентам</div>
+    <p class="hint small" style="margin:-2px 4px 8px">Пишите своими словами. Вместо слов в фигурных скобках подставится: {client} — имя, {no} — номер заказа, {debt} — долг, {price} — цена, {link} — ссылка, {details} — реквизиты, {track_line} — строка с трек-номером, {debt_line} — строка с доплатой.</p>
+    <div class="list">
+      ${keys.map(k => {
+        const [label, ph] = TEXT_INFO[k];
+        const open = t.open === k;
+        const changed = (state.defaultTexts || {})[k] && f.texts[k] !== state.defaultTexts[k];
+        return `
+          <div class="text-item ${open ? 'open' : ''}">
+            <div class="lrow" data-act="textOpen" data-k="${k}">
+              <div class="grow">
+                <div class="l1"><span class="name">${esc(label)}</span>${changed ? '<span class="pill sm" style="--c:var(--btn);--cbg:color-mix(in srgb,var(--btn) 15%,transparent)">свой</span>' : ''}</div>
+                ${open ? '' : `<div class="l2 ellipsis">${esc(f.texts[k] || '')}</div>`}
+              </div>
+              <span class="chev ${open ? 'open' : ''}">${icon('chevron')}</span>
+            </div>
+            ${open ? `<div class="text-edit">
+              <textarea class="input" data-st="${k}">${esc(f.texts[k] || '')}</textarea>
+              <div class="hint small">Можно использовать: ${esc(ph)}</div>
+              <div class="example"><span class="hint small">Клиент получит:</span><div id="ex-${k}">${esc(sampleText(f.texts[k] || ''))}</div></div>
+              ${changed ? `<button class="link-btn" data-act="textReset" data-k="${k}">Вернуть как было</button>` : ''}
+            </div>` : ''}
+          </div>`;
+      }).join('')}
+    </div>
+
+    <button class="btn primary" data-act="settingsSave" style="margin-top:16px">Сохранить настройки</button>
+    <p class="hint small" style="margin:10px 4px">Всё хранится в вашей Google-таблице (листы «Настройки» и «Тексты») — там это тоже можно поменять.</p>`;
+}
+
+function saveSettings() {
+  const t = currentScreen();
+  const f = t.form;
+  const num = (v, min, max) => Math.min(max, Math.max(min, parseNum(v) || 0));
+  const settings = {
+    shopName: String(f.shopName).trim(), paymentDetails: String(f.paymentDetails).trim(),
+    retail: num(f.retail, 0, 1000), opt: num(f.opt, 0, 1000), round: num(f.round, 1, 100000) || 1,
+    usd: num(f.usd, 0, 100000), eur: num(f.eur, 0, 100000),
+    goal: Math.round(num(f.goal, 0, 1e12)), taxRate: num(f.taxRate, 0, 100),
+    attention: {
+      wait: num(f.attention.wait, 1, 365) || 3, paid: num(f.attention.paid, 1, 365) || 3,
+      way: num(f.attention.way, 1, 365) || 25, arrived: num(f.attention.arrived, 1, 365) || 5,
+    },
+  };
+  if (!(settings.usd > 0) || !(settings.eur > 0)) { toast('Укажите курс $ и €', true); return; }
+  // Отправляем только изменённые тексты
+  const texts = {};
+  Object.keys(f.texts).forEach(k => { if (f.texts[k] !== state.texts[k]) texts[k] = f.texts[k]; });
+
+  const before = { settings: state.settings, texts: state.texts };
+  state.settings = Object.assign({}, state.settings, settings);
+  state.texts = Object.assign({}, state.texts);
+  Object.keys(texts).forEach(k => { state.texts[k] = String(texts[k]).trim() || (state.defaultTexts || {})[k] || ''; });
+  t.dirty = false;
+  state.stack.pop();
+  render();
+  haptic('success');
+  toast('Настройки сохранены');
+  saveCacheSoon();
+  queueSync('saveSettings', { settings, texts }, () => { state.settings = before.settings; state.texts = before.texts; });
 }
 
 // =====================================================================
