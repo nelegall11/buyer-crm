@@ -365,6 +365,7 @@ const DemoServer = (() => {
         opt: !!order.opt, track: '', comment: String(order.comment || '').trim(), paid: 0, token: newToken(),
         delivery: Math.max(0, Math.round(Number(order.delivery) || 0)), discount: Math.max(0, Math.round(Number(order.discount) || 0)),
         payMethod: String(order.payMethod || ''), due: order.due ? new Date(order.due).toISOString() : '',
+        instagram: String(order.instagram || '').replace(/^@/, '').toLowerCase(),
         items: items.map(x => {
           const rate = rates[['€', '₸'].includes(x.currency) ? x.currency : '$'];
           if (!(rate > 0)) throw new Error(`Не указан курс ${x.currency}`);

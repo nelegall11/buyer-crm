@@ -1021,3 +1021,7 @@ body.typing .sum-bar { position: static; box-shadow: none; }
 body.typing .top { position: static; }
 body.typing #view { scroll-margin-top: 8px; }
 body.typing .input, body.typing textarea { scroll-margin-top: 12px; }
+
+/* Быстрая строка */
+.quick-in { height: auto; min-height: 76px; font-size: 16px; }
+.rbtn.ig-ic, .rbtn.ig-ic .ic { color: #c2577a; }

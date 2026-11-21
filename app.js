@@ -643,7 +643,15 @@ const ACTIONS = {
     state.csort = keys[(keys.indexOf(state.csort) + 1) % keys.length];
     render();
   },
-  shotSoon: () => toast('Распознавание скриншотов подключим следующим шагом. Пока вставьте текст сообщения'),
+  quickToggle: () => {
+    const d = state.draft;
+    d.quickOpen = !d.quickOpen;
+    if (d.quickOpen) d.pasteOpen = false;
+    saveDraft();
+    render();
+    if (d.quickOpen) $('[data-f="quickText"]').focus();
+  },
+  quickApply: () => applyQuick(),
   ratesToggle: () => { state.draft.ratesOpen = !state.draft.ratesOpen; saveDraft(); render(); },
   payMethod: d => { const dr = state.draft; dr.payMethod = dr.payMethod === d.v ? '' : d.v; saveDraft(); render(); },
   discountPct: d => {
@@ -909,7 +917,13 @@ const ACTIONS = {
     render();
     if (d.v === 'custom') $('[data-f="paidCustom"]').focus();
   },
-  pasteToggle: () => { state.draft.pasteOpen = !state.draft.pasteOpen; render(); if (state.draft.pasteOpen) $('[data-f="pasteText"]').focus(); },
+  pasteToggle: () => {
+    const d = state.draft;
+    d.pasteOpen = !d.pasteOpen;
+    if (d.pasteOpen) d.quickOpen = false;
+    render();
+    if (d.pasteOpen) $('[data-f="pasteText"]').focus();
+  },
   parsePaste: () => applyPaste(),
   restoreFailed: () => {
     // Текущий черновик не теряем: если в нём что-то есть, меняем местами
@@ -927,7 +941,7 @@ const ACTIONS = {
   },
   unpickClient: () => {
     const d = state.draft;
-    d.picked = false; d.client = ''; d.phone = ''; d.who = '';
+    d.picked = false; d.client = ''; d.phone = ''; d.who = ''; d.instagram = '';
     saveDraft();
     render();
     const el = $('[data-f="who"]');
@@ -1010,7 +1024,7 @@ function onInput(e) {
 
   if (f === 'markup') d.markupTouched = true;
   if (f === 'who' || f === 'otherName' || f === 'otherPhone') onClientInput(el, f);
-  if (f !== 'pasteText') updateTotals();
+  if (f !== 'pasteText' && f !== 'quickText') updateTotals();
   saveDraft();
 }
 
@@ -1087,7 +1101,8 @@ function filteredOrders() {
       o.client.toLowerCase().includes(q) ||
       String(o.no) === q.replace('№', '') ||
       (digits.length >= 3 && o.phone.replace(/\D/g, '').includes(digits)) ||
-      (track.length >= 4 && normTrack(o.track).includes(track)))
+      (track.length >= 4 && normTrack(o.track).includes(track)) ||
+      (q.length >= 3 && !!o.instagram && o.instagram.includes(q.replace(/^@/, ''))))
     .sort(sorters[state.sort] || sorters.new);
 }
 
@@ -1283,6 +1298,7 @@ function clientScreen({ key }) {
   const st = clientStats().find(x => x.key === key) || { count: orders.length, total: c.total, profit: 0, debt: c.debt, first: Date.now(), dates: [] };
   const chat = waLink(c.phone, '');
   const tel = c.phone ? `tel:${c.phone.replace(/[^\d+]/g, '')}` : '';
+  const insta = (orders.find(o => o.instagram) || {}).instagram || '';
   const active = orders.filter(o => !isClosed(o));
   const closed = orders.filter(o => isClosed(o));
   const arrived = arrivedOf(key).length;
@@ -1296,12 +1312,13 @@ function clientScreen({ key }) {
         <span class="ava big">${esc(initials(c.name))}</span>
         <div class="grow">
           <b class="ellipsis" style="display:block;font-size:18px">${esc(c.name)}${st.vip ? ` <span class="star">${icon('star')}</span>` : ''}</b>
-          <div class="hint small">${esc(c.phone || 'без телефона')}${isFinite(st.first) ? ` · клиент с ${fmtDate(new Date(st.first).toISOString(), true)}` : ''}</div>
+          <div class="hint small">${esc(c.phone || (insta ? '' : 'без телефона'))}${insta ? `${c.phone ? ' · ' : ''}@${esc(insta)}` : ''}${isFinite(st.first) ? ` · клиент с ${fmtDate(new Date(st.first).toISOString(), true)}` : ''}</div>
         </div>
       </div>
       <div class="act-line">
         <button class="btn ${arrived ? '' : 'primary'}" data-act="newForClient" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}">${icon('plus')}Заказ</button>
         ${chat ? `<button class="rbtn wa-ic" data-act="open" data-url="${esc(chat)}" aria-label="WhatsApp">${icon('chat')}</button>` : ''}
+        ${insta ? `<button class="rbtn ig-ic" data-act="open" data-url="https://ig.me/m/${esc(insta)}" aria-label="Instagram">${icon('insta')}</button>` : ''}
         ${tel ? `<a class="rbtn" href="${esc(tel)}" aria-label="Позвонить">${icon('phone')}</a>` : ''}
         <button class="rbtn" data-act="reminderSheet" data-key="${esc(key)}" data-name="${esc(c.name)}" aria-label="Напомнить мне">${icon('bell')}</button>
       </div>
@@ -1347,7 +1364,8 @@ function newItem() {
 }
 
 // Поля, которых не было в старых черновиках
-const DRAFT_EXTRAS = { delivery: '', discount: '', payMethod: '', due: '', comment: '', ratesOpen: false, addTo: null, dupHidden: false };
+const DRAFT_EXTRAS = { delivery: '', discount: '', payMethod: '', due: '', comment: '', ratesOpen: false, addTo: null, dupHidden: false,
+  instagram: '', quickOpen: true, quickText: '', quickInfo: '' };
 const PAY_METHODS = ['Kaspi', 'Наличные', 'Перевод'];
 
 function newDraft() {
@@ -1430,9 +1448,15 @@ function newOrderTab() {
       </div></div>` : ''}
 
     <div class="entry2">
-      <button class="card entry ${d.pasteOpen ? 'on' : ''}" data-act="pasteToggle">${icon('paste')}<b>Вставить текст</b><span class="hint small">из WhatsApp</span></button>
-      <button class="card entry" data-act="shotSoon">${icon('photo')}<b>Скриншот</b><span class="hint small">распознать заказ</span></button>
+      <button class="card entry ${d.quickOpen ? 'on' : ''}" data-act="quickToggle">${icon('bolt')}<b>Быстрая строка</b><span class="hint small">мария nike.com 10us 120$</span></button>
+      <button class="card entry ${d.pasteOpen ? 'on' : ''}" data-act="pasteToggle">${icon('paste')}<b>Вставить сообщение</b><span class="hint small">из WhatsApp</span></button>
     </div>
+    ${d.quickOpen ? `
+      <div class="card">
+        <textarea class="input quick-in" data-f="quickText" rows="3" placeholder="мария nike.com 10us black 120$&#10;zara.com S бежевый 59$ x2">${esc(d.quickText)}</textarea>
+        <button class="btn primary" data-act="quickApply" style="margin-top:8px">Заполнить</button>
+        ${d.quickInfo ? `<div class="paste-info">${d.quickInfo}</div>` : `<div class="hint small" style="margin-top:8px">Клиент — имя, телефон или @ник. Цена — со значком: 120$, 95€, 45000тг. Каждый товар — с новой строки, количество — x2. Можно дописать «опт» или «оплачено».</div>`}
+      </div>` : ''}
     ${d.pasteOpen ? `
       <div class="card">
         <textarea class="input" data-f="pasteText" placeholder="Вставьте сюда текст из WhatsApp: телефон, ссылки, цены, размер…">${esc(d.pasteText)}</textarea>
@@ -1641,7 +1665,7 @@ function clientFieldHtml(d, known) {
         <span class="ava big">${esc(initials(d.client || '?'))}</span>
         <div class="grow">
           <b class="ellipsis" style="display:block">${esc(d.client || 'Без имени')}</b>
-          <span class="hint small">${esc(d.phone || 'без телефона')}</span>
+          <span class="hint small">${esc(d.phone || (d.instagram ? '' : 'без телефона'))}${d.instagram ? `${d.phone ? ' · ' : ''}@${esc(d.instagram)}` : ''}</span>
           ${known ? `<div class="known">${icon('check')}Постоянный клиент · ${ordersWord(known.count)}</div>` : ''}
           ${noteFor(d.client, d.phone) ? `<div class="note-line">${icon('note')}${esc(noteFor(d.client, d.phone))}</div>` : ''}
         </div>
@@ -1775,7 +1799,7 @@ async function saveOrder() {
       })),
       paid: c.paid, paidAll: d.paidMode === 'all',
       delivery: c.delivery, discount: c.discount, payMethod: d.paidMode && d.paidMode !== 'none' ? d.payMethod : '',
-      due: d.due || '', comment: (d.comment || '').trim(),
+      due: d.due || '', comment: (d.comment || '').trim(), instagram: d.instagram || '',
     },
   };
   if (d.addTo) return addToExisting(d, payload.order);
@@ -1900,6 +1924,63 @@ function parseMessage(text) {
   if (color) parts.push(color[1].trim());
 
   return { phone: phoneMatch ? phoneMatch[0].trim() : '', links, prices, size: parts.join(' · ') };
+}
+
+// Быстрая строка → форма. Сам разбор — в quick.js (такой же у бота)
+function applyQuick() {
+  const d = state.draft;
+  const p = parseQuick(d.quickText || '');
+  if (!p.items.length && !p.name && !p.phone && !p.instagram) {
+    d.quickInfo = '🤔 Ничего не понятно. Пример: <b>мария nike.com 10us black 120$</b>';
+    render();
+    haptic('warning');
+    return;
+  }
+  const found = [];
+  // Клиент: по телефону, по @нику, по имени
+  let known = p.phone ? findClient('', p.phone) : null;
+  if (!known && p.instagram) {
+    const o = state.orders.slice().sort((a, b) => b.no - a.no).find(x => x.instagram === p.instagram);
+    if (o) known = { name: o.client, phone: o.phone, count: state.orders.filter(x => clientKey(x) === clientKey(o)).length };
+  }
+  let several = 0;
+  if (!known && p.name && !p.phone) {
+    const low = p.name.toLowerCase();
+    const list = clientList().filter(c => c.name.toLowerCase().startsWith(low));
+    if (list.length === 1) known = list[0];
+    several = list.length > 1 ? list.length : 0;
+  }
+  if (known) {
+    pickDraftClient(known.name, known.phone);
+    found.push(`клиент из базы — ${esc(known.name)}`);
+  } else if (several) {
+    d.picked = false; d.client = p.name; d.phone = ''; d.who = p.name;
+    found.push(`клиентов «${esc(p.name)}» несколько — выберите ниже`);
+  } else if (p.name || p.phone || p.instagram) {
+    pickDraftClient(p.name || (p.instagram ? '@' + p.instagram : ''), p.phone ? formatPhone(p.phone) : '');
+    found.push(`новый клиент ${esc(p.name || p.phone || '@' + p.instagram)}`);
+  }
+  if (p.instagram) d.instagram = p.instagram;
+
+  if (p.items.length) {
+    const blank = d.items.every(it => !it.link.trim() && !it.amount.trim() && !it.size.trim());
+    if (blank) d.items = [];
+    p.items.forEach(x => d.items.push({
+      link: x.link, size: x.size, qty: String(x.qty), amount: x.amount ? String(x.amount) : '', currency: x.currency,
+    }));
+    found.push(`товаров: ${p.items.length}`);
+  }
+  if (p.opt && !d.opt) {
+    d.opt = true;
+    if (!d.markupTouched) d.markup = String(state.settings.opt);
+  }
+  if (p.paid) d.paidMode = 'all';
+  const missing = p.problems.filter(x => x.startsWith('нет цены'));
+  d.quickInfo = `✅ ${found.join(', ')}.` + (missing.length ? ` <b class="debt">${esc(missing.join(', '))} — допишите ниже.</b>` : ' Проверьте и сохраните.');
+  d.quickText = '';
+  saveDraft();
+  render();
+  haptic(missing.length ? 'warning' : 'success');
 }
 
 function applyPaste() {
@@ -3965,6 +4046,8 @@ const ICONS = {
   cake: '<path d="M4 21h16M5 21v-8h14v8M4 17c2 1 3 0 4-1 1 1 3 2 4 0 1 2 3 1 4 0 1 1 2 2 4 1M12 13V9M12 6.5c-1-1 0-2.5 0-2.5s1 1.5 0 2.5"/>',
   lock: '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
   inbox: '<path d="M4 13l2.5-8h11L20 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 13h4.5l1 2h5l1-2H20"/>',
+  bolt: '<path d="M13 3L5 13.5h6L10 21l8-10.5h-6z"/>',
+  insta: '<rect x="4" y="4" width="16" height="16" rx="5"/><circle cx="12" cy="12" r="3.6"/><path d="M16.8 7.2h.01"/>',
   box: '<path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9"/>',
   sort: '<path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/>',
   star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
@@ -3977,7 +4060,7 @@ const ICONS = {
 
 // «Алия С.» → «АС» — для кружка-аватарки
 function initials(name) {
-  const parts = String(name).replace(/[«»"]/g, '').split(/\s+/).filter(Boolean);
+  const parts = String(name).replace(/[«»"@]/g, '').split(/\s+/).filter(Boolean);
   return ((parts[0] || '?')[0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
 }
 
