@@ -26,7 +26,7 @@ const IN_TG = !!(tg && tg.initData); // true — приложение откры
 // Номера статусов. Названия приходят с сервера (их можно переименовать), а код опирается на порядок.
 const S = { WAIT: 0, PAID: 1, BOUGHT: 2, STOCK: 3, WAY: 4, ARRIVED: 5, DONE: 6, CANCEL: 7 };
 // Красный не используем: он только для долгов. «Ждёт оплаты» — спокойный серо-синий.
-const STATUS_COLORS = ['#7c8bb0', '#f5a524', '#f76b15', '#8e4ec6', '#0090ff', '#12a594', '#30a46c', '#a3a3ab'];
+const STATUS_COLORS = ['#9a9aa2', '#d1a03c', '#d9804a', '#9b85cf', '#4f8fcf', '#3aa199', '#3f9a66', '#c4c4c8'];
 const TEXT_KEYS = [null, 'paid', 'bought', 'stock', 'way', 'arrived', 'done', null];
 const TAB_TITLES = { today: 'Сегодня', orders: 'Заказы', new: 'Новый заказ', clients: 'Клиенты', biz: 'Бизнес' };
 const DRAFT_KEY = 'buyercrm-draft';
@@ -62,7 +62,23 @@ const $ = sel => document.querySelector(sel);
 //  ЗАПУСК
 // =====================================================================
 
+// Светлая или тёмная тема — как в Telegram (в браузере — как в системе)
+function applyTheme() {
+  const dark = IN_TG && tg.colorScheme ? tg.colorScheme === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  if (IN_TG) {
+    const css = getComputedStyle(document.documentElement);
+    const page = css.getPropertyValue('--bg2').trim();
+    try { tg.setHeaderColor(page); tg.setBackgroundColor(page); } catch (e) { /* старые версии Telegram */ }
+    try { tg.setBottomBarColor && tg.setBottomBarColor(css.getPropertyValue('--bg').trim()); } catch (e) { /* нет — не страшно */ }
+    try { tg.MainButton.setParams({ color: css.getPropertyValue('--btn').trim(), text_color: '#ffffff' }); } catch (e) { /* старые версии */ }
+  }
+}
+
 function start() {
+  applyTheme();
+  if (tg && tg.onEvent) tg.onEvent('themeChanged', applyTheme);
+  if (!IN_TG) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
   if (tg) {
     tg.ready();
     tg.expand();
@@ -70,7 +86,6 @@ function start() {
       document.body.classList.add('in-tg');
       tg.MainButton.onClick(onMainButton);
       tg.BackButton.onClick(goBack);
-      try { tg.setHeaderColor('secondary_bg_color'); } catch (e) { /* старые версии Telegram */ }
     }
   }
   $('#demoBadge').hidden = !DEMO;
