@@ -69,7 +69,7 @@
       return Math.ceil(cost * (1 + markup / 100) / step - 1e-9) * step;
     }
   </script>
-  <script src="demo.js?v=10"></script>
+  <script src="demo.js?v=11"></script>
   <script>
     'use strict';
     const P = new URLSearchParams(location.search);
@@ -131,6 +131,8 @@
         </div>
 
         <div class="card">
+          ${d.delivery > 0 ? `<div class="row"><span>Доставка</span><span class="money">${money(d.delivery)}</span></div>` : ''}
+          ${d.discount > 0 ? `<div class="row"><span>Скидка</span><span class="money">−${money(d.discount)}</span></div>` : ''}
           <div class="row"><span>Сумма заказа</span><span class="money">${money(d.total)}</span></div>
           <div class="row"><span>Оплачено</span><span class="money">${money(d.paid)}</span></div>
           <div class="row"><span>${d.debt > 0 ? 'Осталось оплатить' : 'Оплата'}</span>

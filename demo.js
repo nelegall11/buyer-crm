@@ -217,15 +217,15 @@ const DemoServer = (() => {
     return {
       id: data.nextItemId++,
       link: String(x.link || ''), size: String(x.size || ''), qty, amount,
-      currency: x.currency === '€' ? '€' : '$', rate, markup,
+      currency: ['€', '₸'].includes(x.currency) ? x.currency : '$', rate, markup,
       cost, price: calcPrice(cost, markup, data.settings.round), bought: !!bought,
     };
   }
 
   function recalc(o) {
     o.count = o.items.reduce((a, x) => a + x.qty, 0);
-    o.total = o.items.reduce((a, x) => a + x.price, 0);
-    o.profit = o.items.reduce((a, x) => a + x.price - x.cost, 0);
+    o.total = o.items.reduce((a, x) => a + x.price, 0) + (o.delivery || 0) - (o.discount || 0);
+    o.profit = o.items.reduce((a, x) => a + x.price - x.cost, 0) - (o.discount || 0);
     o.debt = o.total - o.paid;
   }
 
@@ -357,14 +357,16 @@ const DemoServer = (() => {
       if (!client) throw new Error('Не указан клиент');
       const items = (order.items || []).filter(x => Number(x.amount) > 0);
       if (!items.length) throw new Error('Добавьте хотя бы один товар с ценой');
-      const rates = { '$': Number(order.rates.usd) || 0, '€': Number(order.rates.eur) || 0 };
+      const rates = { '$': Number(order.rates.usd) || 0, '€': Number(order.rates.eur) || 0, '₸': 1 };
       const markup = Number(order.markup) || 0;
 
       const o = {
         no: db.nextNo++, date: new Date().toISOString(), client, phone: String(order.phone || '').trim(),
-        opt: !!order.opt, track: '', comment: '', paid: 0, token: newToken(),
+        opt: !!order.opt, track: '', comment: String(order.comment || '').trim(), paid: 0, token: newToken(),
+        delivery: Math.max(0, Math.round(Number(order.delivery) || 0)), discount: Math.max(0, Math.round(Number(order.discount) || 0)),
+        payMethod: String(order.payMethod || ''), due: order.due ? new Date(order.due).toISOString() : '',
         items: items.map(x => {
-          const rate = rates[x.currency === '€' ? '€' : '$'];
+          const rate = rates[['€', '₸'].includes(x.currency) ? x.currency : '$'];
           if (!(rate > 0)) throw new Error(`Не указан курс ${x.currency}`);
           return makeItem(db, x, markup, rate, false);
         }),
@@ -378,9 +380,22 @@ const DemoServer = (() => {
       db.orders.push(o);
 
       // Запоминаем курс как «прошлый», как это делает бот
-      if (items.some(x => x.currency !== '€')) db.settings.usd = rates['$'];
+      if (items.some(x => x.currency === '$')) db.settings.usd = rates['$'];
       if (items.some(x => x.currency === '€')) db.settings.eur = rates['€'];
       return { orders: [o], settings: db.settings };
+    },
+
+    // Дописать товары в заказ, который ещё не выкупали
+    addItems({ no, items, rates, markup, paid }) {
+      const o = find(no);
+      if (![STATUSES[WAIT], STATUSES[PAID]].includes(o.status)) throw new Error(`Заказ №${o.no} уже «${o.status}» — создайте новый`);
+      const r = { '$': Number(rates.usd) || 0, '€': Number(rates.eur) || 0, '₸': 1 };
+      (items || []).filter(x => Number(x.amount) > 0).forEach(x => {
+        o.items.push(makeItem(db, x, Number(markup) || 0, r[['€', '₸'].includes(x.currency) ? x.currency : '$'], false));
+      });
+      o.paid += Math.max(0, Number(paid) || 0);
+      recalc(o);
+      return { orders: [o] };
     },
 
     setStatus({ nos, status, track }) {
