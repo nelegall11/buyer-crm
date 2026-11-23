@@ -478,7 +478,9 @@ function updateMainButton() {
     if (n) { text = `Отметить «${state.statuses[S.ARRIVED]}» (${n})`; mainAction = applyParcel; }
   }
   if (!state.loading && !state.error && !top) {
-    if (state.tab === 'new') {
+    if (state.tab === 'new' && isNewStart()) {
+      // первый шаг — кнопка «Разобрать» прямо под строкой
+    } else if (state.tab === 'new') {
       const c = calcDraft();
       text = c.total > 0 ? `Сохранить заказ · ${money(c.total)}` : 'Сохранить заказ';
       mainAction = saveOrder;
@@ -661,6 +663,22 @@ const ACTIONS = {
     if (d.quickOpen) $('[data-f="quickText"]').focus();
   },
   quickApply: () => applyQuick(),
+  newBack: () => {
+    const d = state.draft;
+    if (!isBlankDraft(d) && !confirm('Вернуться к строке? Заполненное в форме сбросится.')) return;
+    const q = d.quickText;
+    state.draft = newDraft();
+    state.draft.quickText = q || '';
+    saveDraft();
+    render();
+  },
+  manualForm: () => { state.draft.manual = true; saveDraft(); render(); },
+  repeatOrder: d => {
+    const prev = findOrder(Number(d.no));
+    if (!prev) return;
+    pickDraftClient(prev.client, prev.phone);
+    ACTIONS.repeatLast(d);
+  },
   ratesToggle: () => { state.draft.ratesOpen = !state.draft.ratesOpen; saveDraft(); render(); },
   payMethod: d => { const dr = state.draft; dr.payMethod = dr.payMethod === d.v ? '' : d.v; saveDraft(); render(); },
   discountPct: d => {
@@ -989,6 +1007,7 @@ const ACTIONS = {
     render();
   },
   newOrder: () => { state.draft = newDraft(); saveDraft(); switchTab('new'); },
+  copyReceipt: d => { const o = findOrder(Number(d.no)); if (o) copyText(receiptText(o)); },
   doneOpenOrder: d => { state.stack = []; state.tab = 'orders'; openScreen({ type: 'order', no: Number(d.no) }); },
 
   resetDemo: async () => {
@@ -1508,6 +1527,7 @@ function calcDraft() {
 
 function newOrderTab() {
   const d = state.draft;
+  if (isNewStart()) return newStartHtml(d);
   const c = calcDraft();
   const hasEur = d.items.some(x => x.currency === '€');
   const known = d.picked ? findClient(d.client, d.phone) : null;
@@ -1528,22 +1548,8 @@ function newOrderTab() {
         <button class="btn small" data-act="dropFailed">Удалить</button>
       </div></div>` : ''}
 
-    <div class="entry2">
-      <button class="card entry ${d.quickOpen ? 'on' : ''}" data-act="quickToggle">${icon('bolt')}<b>Быстрая строка</b><span class="hint small">мария nike.com 10us 120$</span></button>
-      <button class="card entry ${d.pasteOpen ? 'on' : ''}" data-act="pasteToggle">${icon('paste')}<b>Вставить сообщение</b><span class="hint small">из WhatsApp</span></button>
-    </div>
-    ${d.quickOpen ? `
-      <div class="card">
-        <textarea class="input quick-in" data-f="quickText" rows="3" placeholder="мария nike.com 10us black 120$&#10;zara.com S бежевый 59$ x2">${esc(d.quickText)}</textarea>
-        <button class="btn primary" data-act="quickApply" style="margin-top:8px">Заполнить</button>
-        ${d.quickInfo ? `<div class="paste-info">${d.quickInfo}</div>` : `<div class="hint small" style="margin-top:8px">Клиент — имя, телефон или @ник. Цена — со значком: 120$, 95€, 45000тг. Каждый товар — с новой строки, количество — x2. Можно дописать «опт» или «оплачено».</div>`}
-      </div>` : ''}
-    ${d.pasteOpen ? `
-      <div class="card">
-        <textarea class="input" data-f="pasteText" placeholder="Вставьте сюда текст из WhatsApp: телефон, ссылки, цены, размер…">${esc(d.pasteText)}</textarea>
-        <button class="btn primary" data-act="parsePaste" style="margin-top:8px">Заполнить форму</button>
-        ${d.pasteInfo ? `<div class="paste-info">${d.pasteInfo}</div>` : ''}
-      </div>` : ''}
+    <div class="nw-chk"><b>${d.addTo ? `Добавить в №${d.addTo}` : 'Проверьте заказ'}</b><button data-act="newBack">${icon('bolt')}Одной строкой</button></div>
+    ${d.quickInfo ? `<div class="paste-info" style="margin-top:0">${d.quickInfo}</div>` : d.pasteInfo ? `<div class="paste-info" style="margin-top:0">${d.pasteInfo}</div>` : ''}
 
     <div class="section-title">Клиент</div>
     <div class="card">
@@ -1622,6 +1628,47 @@ function newOrderTab() {
     </div>
 
     <button class="link-btn" data-act="clearDraft" style="margin-top:6px;color:var(--hint)">Очистить форму</button>`;
+}
+
+function isNewStart() {
+  const d = state.draft;
+  return !!d && !d.manual && !d.addTo && isBlankDraft(d) && !state.failedDraft;
+}
+
+// Первый шаг нового заказа: одна строка, частые клиенты, «повторить заказ»
+function newStartHtml(d) {
+  const stats = clientStats();
+  const top = stats.filter(c => c.count >= 2).sort((a, b) => b.count - a.count || b.last - a.last).slice(0, 8);
+  const seen = new Set();
+  const repeat = state.orders.filter(o => !isCancelled(o) && o.items.length).sort((a, b) => b.no - a.no)
+    .filter(o => { const k = clientKey(o); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 3);
+  return `
+    <div class="nw-box">
+      <label class="nw-ph" for="nwLine">Напишите заказ одной строкой</label>
+      <textarea id="nwLine" class="nw-in" data-f="quickText" rows="3" placeholder="мария nike.com 10us black 120$&#10;zara.com M 45$">${esc(d.quickText)}</textarea>
+      <div class="nw-tools">
+        <button class="nw-go-sm" data-act="quickApply">${icon('bolt')}Разобрать</button>
+        <button class="nw-paste" data-act="pasteToggle">${icon('paste')}Из WhatsApp</button>
+      </div>
+    </div>
+    ${d.quickInfo ? `<div class="paste-info">${d.quickInfo}</div>` : `<div class="nw-hint">${icon('bolt')}Клиент, магазин, размер, цена со значком (120$, 95€, 45000тг). Каждый товар — с новой строки, «x2» — количество, можно дописать «опт» или «оплачено».</div>`}
+    ${d.pasteOpen ? `
+      <div class="od-card" style="margin-top:12px">
+        <textarea class="input" data-f="pasteText" placeholder="Вставьте сюда текст из WhatsApp: телефон, ссылки, цены, размер…">${esc(d.pasteText)}</textarea>
+        <button class="btn primary" data-act="parsePaste" style="margin-top:8px">Заполнить форму</button>
+        ${d.pasteInfo ? `<div class="paste-info">${d.pasteInfo}</div>` : ''}
+      </div>` : ''}
+    ${top.length ? `<div class="cc-h">Частые клиенты</div>
+      <div class="nw-chips">${top.map(c => `<button data-act="pickClient" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}"><b style="${avStyle(c.name)}">${esc(initials(c.name))}</b>${esc(c.name)}</button>`).join('')}</div>` : ''}
+    ${repeat.length ? `<div class="cc-h">Повторить заказ</div>
+      <div class="cl-g" style="margin-top:0">${repeat.map(o => {
+        const shop = isUrl((o.items[0] || {}).link) ? site(o.items[0].link) : '';
+        return `<div class="cl-r" data-act="repeatOrder" data-no="${o.no}">
+          <span class="nw-logo" style="background:${shopColor(shop || o.client)}">${esc((shop || o.client).charAt(0).toUpperCase())}</span>
+          <span class="cl-t"><b><span class="ellipsis">${esc(o.client)}${shop ? ' · ' + esc(shop) : ''}</span></b><small>${o.count} ${o.count === 1 ? 'товар' : o.count < 5 ? 'товара' : 'товаров'} · ${money(o.total)} · ${fmtDate(o.date)}</small></span>
+          <span class="pf-c">${icon('repeat')}</span></div>`;
+      }).join('')}</div>` : ''}
+    <button class="nw-alt" data-act="manualForm">Заполнить вручную</button>`;
 }
 
 function itemFormHtml(it, i, calc, count, sizes) {
@@ -2217,70 +2264,70 @@ function orderScreen({ no }) {
   const chat = waLink(o.phone, '');
   const receiptUrl = waLink(o.phone, receiptText(o));
   const tel = o.phone ? `tel:${o.phone.replace(/[^\d+]/g, '')}` : '';
+  const stage = cancelled ? 0 : cur + 1;
+  const pct = cancelled ? 0 : stage / FLOW.length;
+  const paidPct = o.total > 0 ? Math.min(100, Math.round(o.paid / o.total * 100)) : 0;
+  const C = 2 * Math.PI * 34;
+  const acts = [
+    msgUrl || chat ? `<button data-act="open" data-url="${esc(msgUrl || chat)}"><b style="background:#25D366">${icon('chat')}</b>${msgUrl ? 'Сообщить' : 'WhatsApp'}</button>` : '',
+    tel ? `<a href="${esc(tel)}"><b style="background:#2F7BF6">${icon('phone')}</b>Позвонить</a>` : '',
+    receiptUrl ? `<button data-act="open" data-url="${esc(receiptUrl)}"><b style="background:#7C5CF5">${icon('receipt')}</b>Чек</button>` : '',
+    `<button data-act="trackShare" data-no="${o.no}"><b style="background:#0EA5E9">${icon('link')}</b>Ссылка</button>`,
+    `<button data-act="reminderSheet" data-no="${o.no}"><b style="background:#F59E0B">${icon('bell')}</b>Напомнить</button>`,
+  ].filter(Boolean);
 
   return `
-    <div class="card">
-      <div class="row">
-        <span class="ava big">${esc(initials(o.client))}</span>
-        <div class="grow">
-          <b class="ellipsis" style="display:block;font-size:18px">${esc(o.client)}</b>
-          <div class="hint small">${fmtDate(o.date, true)} · ${o.opt ? 'Опт' : 'Розница'}${o.phone ? ' · ' + esc(o.phone) : ''}</div>
-        </div>
-        ${tel ? `<a class="icon-btn soft" href="${esc(tel)}" aria-label="Позвонить">${icon('phone')}</a>` : ''}
-        ${chat ? `<button class="icon-btn soft wa-ic" data-act="open" data-url="${esc(chat)}" aria-label="WhatsApp">${icon('chat')}</button>` : ''}
+    <div class="od-hero">
+      <div class="od-ring">
+        <svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" fill="none" stroke="var(--sep)" stroke-width="7"/>
+          <circle cx="40" cy="40" r="34" fill="none" stroke="${cancelled ? 'var(--hint)' : 'var(--btn)'}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(C * pct).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 40 40)"/></svg>
+        <span><em>${cancelled ? '—' : `<b>${stage}</b> / ${FLOW.length}`}</em><small>этап</small></span>
+      </div>
+      <div class="od-st">${cancelled ? 'Заказ <b>отменён</b>' : `Сейчас: <b>${esc(o.status)}</b>${next !== null ? ` · дальше: ${esc(state.statuses[next].toLowerCase())}` : ''}`}</div>
+      <div class="od-amt money">${money(o.total)}</div>
+      <div class="od-sub">${esc(o.client)} · ${o.count} ${o.count === 1 ? 'товар' : o.count < 5 ? 'товара' : 'товаров'} · ${fmtDate(o.date, true)}</div>
+      ${next !== null ? `<button class="btn primary" data-act="setStatus" data-no="${o.no}" data-i="${next}">Перевести в «${esc(state.statuses[next])}»${icon('arrow')}</button>` : ''}
+      <button class="od-other" data-act="statusSheet" data-no="${o.no}">Выбрать другой статус</button>
+    </div>
+    <div class="cc-acts" style="grid-template-columns:repeat(${acts.length},1fr)">${acts.join('')}</div>
+
+    <div class="cc-h">Клиент</div>
+    <div class="cl-g" style="margin-top:0">
+      <div class="cl-r" data-act="openClient" data-key="${esc(clientKey(o))}">
+        <span class="cl-av" style="${avStyle(o.client)}">${esc(initials(o.client))}</span>
+        <span class="cl-t"><b><span class="ellipsis">${esc(o.client)}</span></b><small>${o.phone ? esc(o.phone) + ' · ' : ''}${o.opt ? 'опт' : 'розница'}</small></span>
+        <span class="pf-c">${icon('chevron')}</span>
       </div>
     </div>
 
-    <div class="card">
-      <div class="row between"><span class="hint">Статус</span>${pill(o.status)}</div>
-      ${cancelled ? '' : `
-        <div class="steps" style="${statusStyle(cur)}">${FLOW.map(i => `<span class="${i <= cur ? 'on' : ''}"></span>`).join('')}</div>
-        <div class="hint small">Этап ${cur + 1} из ${FLOW.length}${next !== null ? ` · дальше: ${esc(state.statuses[next])}` : ' · заказ завершён'}</div>`}
-      ${next !== null ? `<button class="btn primary" data-act="setStatus" data-no="${o.no}" data-i="${next}" style="margin-top:12px">
-        Перевести в «${esc(state.statuses[next])}»${icon('arrow')}</button>` : ''}
-      <button class="btn ghost" data-act="statusSheet" data-no="${o.no}">Выбрать другой статус</button>
-    </div>
-
-    ${msgUrl ? `<button class="btn wa" data-act="open" data-url="${esc(msgUrl)}">${icon('chat')}Сообщить клиенту в WhatsApp</button>` : ''}
-
-    <div class="section-title">Деньги</div>
-    <div class="card">
-      <div class="stats3">
-        <div><span class="hint small">Сумма</span><b class="money">${money(o.total)}</b></div>
-        <div><span class="hint small">Оплачено</span><b class="money">${money(o.paid)}</b></div>
-        <div><span class="hint small">Долг</span>${o.debt > 0 ? `<b class="debt money">${money(o.debt)}</b>` : '<b class="ok">нет</b>'}</div>
-      </div>
-      <div class="hint small" style="margin-top:8px">Ваша прибыль: ${money(o.profit)}${o.delivery > 0 ? ` · доставка ${money(o.delivery)}` : ''}${o.discount > 0 ? ` · скидка ${money(o.discount)}` : ''}${o.payMethod ? ` · ${esc(o.payMethod)}` : ''}</div>
-      ${o.due && !isClosed(o) ? `<div class="small" style="margin-top:6px">${icon('calendar')} Нужно к ${esc(new Date(o.due).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }))}</div>` : ''}
-      ${o.comment ? `<div class="small" style="margin-top:6px">${icon('note')} ${esc(o.comment)}</div>` : ''}
+    <div class="cc-h">Оплата</div>
+    <div class="od-card">
+      <div class="od-kv"><span>Оплачено</span><b class="money ${o.debt > 0 ? '' : 'ok'}">${money(o.paid)} из ${money(o.total)}</b></div>
+      <div class="od-bar"><i style="width:${paidPct}%"></i></div>
+      ${o.debt > 0 ? `<div class="od-kv"><span>Долг</span><b class="money debt">${money(o.debt)}</b></div>` : ''}
+      <div class="od-kv"><span>Ваша прибыль</span><b class="money">${money(o.profit)}</b></div>
+      ${o.delivery > 0 || o.discount > 0 || o.payMethod ? `<div class="od-note">${[o.delivery > 0 ? `доставка ${money(o.delivery)}` : '', o.discount > 0 ? `скидка ${money(o.discount)}` : '', o.payMethod ? esc(o.payMethod) : ''].filter(Boolean).join(' · ')}</div>` : ''}
+      ${o.due && !isClosed(o) ? `<div class="od-note">${icon('calendar')} Нужно к ${esc(new Date(o.due).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }))}</div>` : ''}
+      ${o.comment ? `<div class="od-note">${icon('note')} ${esc(o.comment)}</div>` : ''}
       ${o.debt > 0 && !cancelled ? `<button class="btn primary" data-act="payment" data-no="${o.no}" style="margin-top:12px">${icon('cash')}Внести оплату</button>` : ''}
     </div>
 
-    <div class="section-title">Товары · ${o.count} шт</div>
-    <div class="list">
+    <div class="cc-h">Товары · ${o.count} шт</div>
+    <div class="cl-g" style="margin-top:0">
       ${o.items.map(it => `
-        <div class="lrow" ${isUrl(it.link) ? `data-act="open" data-url="${esc(it.link)}"` : ''}>
-          <span class="mark ${it.bought ? 'on' : ''}" title="${it.bought ? 'Выкуплен' : 'Не выкуплен'}">${it.bought ? icon('check') : ''}</span>
-          <div class="grow">
-            <div class="l1"><span class="name ellipsis">${esc(itemLabel(it))}</span></div>
-            <div class="l2">${fmtNum(it.amount)} ${it.currency} × ${it.qty} · курс ${fmtNum(it.rate)} · +${fmtNum(it.markup)}%</div>
-          </div>
-          <div class="rt"><div class="money">${money(it.price)}</div></div>
+        <div class="cl-r" ${isUrl(it.link) ? `data-act="open" data-url="${esc(it.link)}"` : ''}>
+          <span class="od-mark ${it.bought ? 'on' : ''}" title="${it.bought ? 'Выкуплен' : 'Не выкуплен'}">${it.bought ? icon('check') : ''}</span>
+          <span class="cl-t"><b><span class="ellipsis">${esc(itemLabel(it))}</span></b><small>${fmtNum(it.amount)} ${it.currency} × ${it.qty} · курс ${fmtNum(it.rate)} · +${fmtNum(it.markup)}%</small></span>
+          <span class="cl-v money">${money(it.price)}</span>
         </div>`).join('')}
     </div>
 
-    <div class="section-title">Трек-номер</div>
-    <div class="card">
+    <div class="cc-h">Трек-номер</div>
+    <div class="od-card">
       <div class="row">
         <input id="trackEdit" class="input grow" value="${esc(o.track)}" placeholder="Нет трек-номера" autocomplete="off">
         <button class="btn small" data-act="saveTrack" data-no="${o.no}">Сохранить</button>
       </div>
-    </div>
-
-    ${receiptUrl ? `<button class="btn" data-act="open" data-url="${esc(receiptUrl)}">${icon('receipt')}Отправить чек в WhatsApp</button>` : ''}
-    <div class="btn-row">
-      <button class="btn small" data-act="trackShare" data-no="${o.no}">${icon('link')}Ссылка для клиента</button>
-      <button class="btn small" data-act="reminderSheet" data-no="${o.no}">${icon('bell')}Напомнить мне</button>
     </div>`;
 }
 
@@ -2291,20 +2338,25 @@ function doneScreen(top) {
   const o = pending ? top.preview : findOrder(top.no);
   if (!o) return emptyHtml('🤷', 'Заказ не найден');
   const url = waLink(o.phone, receiptText(o));
-  let waButton;
-  if (!o.phone) waButton = `<p class="hint" style="text-align:center">Чтобы отправить чек в WhatsApp, укажите телефон клиента</p>`;
-  else if (pending) waButton = `<button class="btn wa" disabled>${icon('chat')}Чек будет готов через пару секунд…</button>`;
-  else waButton = `<button class="btn wa" data-act="open" data-url="${esc(url)}">${icon('chat')}Отправить чек в WhatsApp</button>`;
+  const paidText = o.debt <= 0 ? 'оплачен' : o.paid > 0 ? `долг ${money(o.debt)}` : 'ждёт оплаты';
+  const chev = `<span class="pf-c">${icon('chevron')}</span>`;
+  const waRow = !o.phone
+    ? `<div class="cl-r"><span class="pf-i" style="background:#25D366">${icon('chat')}</span><span class="cl-t"><b>Чек в WhatsApp</b><small>Укажите телефон клиента, чтобы отправить</small></span></div>`
+    : pending
+      ? `<div class="cl-r"><span class="pf-i" style="background:#25D366;opacity:.5">${icon('chat')}</span><span class="cl-t"><b>Чек будет готов через пару секунд…</b></span></div>`
+      : `<div class="cl-r" data-act="open" data-url="${esc(url)}"><span class="pf-i" style="background:#25D366">${icon('chat')}</span><span class="cl-t"><b>Отправить чек в WhatsApp</b><small>с суммой и ссылкой на заказ</small></span>${chev}</div>`;
   return `
-    <div class="done-head">
-      <span class="done-ic ${pending ? 'pending' : ''}">${icon('check')}</span>
-      <b>${pending ? 'Заказ сохраняется…' : `Заказ №${o.no} сохранён`}</b>
-      <span class="hint">${pending ? 'Номер появится через пару секунд · ' : ''}Ваша прибыль: <span class="ok">${money(o.profit)}</span></span>
+    <div class="dn-ok ${pending ? 'pending' : ''}">${icon('check')}</div>
+    <div class="dn-t"><b>${pending ? 'Заказ сохраняется…' : `Заказ №${o.no} создан`}</b>
+      <small>${esc(o.client)} · ${money(o.total)} · ${paidText}</small>
+      <small>Ваша прибыль: <span class="ok">${money(o.profit)}</span></small></div>
+    <div class="cl-g" style="margin-top:22px">
+      ${waRow}
+      ${pending ? '' : `<div class="cl-r" data-act="copyReceipt" data-no="${o.no}"><span class="pf-i" style="background:#7C5CF5">${icon('paste')}</span><span class="cl-t"><b>Скопировать чек</b></span>${chev}</div>
+      <div class="cl-r" data-act="doneOpenOrder" data-no="${o.no}"><span class="pf-i" style="background:#2F7BF6">${icon('box')}</span><span class="cl-t"><b>Открыть заказ</b></span>${chev}</div>`}
     </div>
-    <div class="card"><pre class="receipt">${esc(receiptText(o))}</pre></div>
-    ${waButton}
-    <button class="btn primary" data-act="newOrder">${icon('plus')}Ещё заказ</button>
-    ${pending ? '' : `<button class="btn" data-act="doneOpenOrder" data-no="${o.no}">Открыть заказ</button>`}`;
+    <button class="btn primary" data-act="newOrder" style="margin-top:18px">${icon('plus')}Ещё заказ</button>
+    <details class="dn-rc"><summary>Посмотреть чек</summary><pre class="receipt">${esc(receiptText(o))}</pre></details>`;
 }
 
 // ---------- Сводка (как утренняя сводка в боте) ----------
