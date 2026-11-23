@@ -1187,3 +1187,47 @@ body.home .top { display: none; }
 .pf-c { width: 16px; height: 16px; color: var(--hint); opacity: .6; flex: none; display: grid; place-items: center; }
 .pf-c .ic { width: 16px; height: 16px; }
 .pf-ver { font-size: 12px; color: var(--hint); text-align: center; margin: 18px 0 8px; }
+
+/* ---------- v16: «Клиенты» и карточка клиента ---------- */
+.cl-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 14px 4px 8px; font-size: 13px; color: var(--hint); }
+.cl-bar button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; color: var(--btn); font: inherit; font-weight: 600; padding: 0; flex: none; }
+.cl-bar .ic { width: 15px; height: 15px; }
+.cl-g { background: var(--bg); border-radius: 16px; box-shadow: var(--shadow14); overflow: hidden; margin-top: 12px; }
+.cl-bar + .cl-g { margin-top: 0; }
+.cl-r { display: flex; align-items: center; gap: 12px; padding: 10px 12px; position: relative; min-height: 56px; }
+.cl-r[data-act] { cursor: pointer; }
+.cl-r[data-act]:active { background: var(--soft); }
+.cl-r + .cl-r::before { content: ""; position: absolute; top: 0; left: 60px; right: 0; border-top: 1px solid var(--sep); }
+.cl-av { width: 36px; height: 36px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 12.5px; font-weight: 700; flex: none; }
+.cl-t { flex: 1; min-width: 0; }
+.cl-t b { display: flex; align-items: center; gap: 4px; font-size: 15px; font-weight: 600; min-width: 0; }
+.cl-t b .ellipsis { min-width: 0; }
+.cl-t small { display: block; font-size: 12.5px; color: var(--hint); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cl-star, .cl-cake { display: inline-grid; flex: none; }
+.cl-star .ic { width: 13px; height: 13px; color: #F5A524; fill: #F5A524; }
+.cl-cake .ic { width: 14px; height: 14px; color: #EC4899; }
+.cl-v { font-size: 14px; font-weight: 600; flex: none; }
+.cl-v.debt { color: var(--danger); }
+.cl-r .pf-i { width: 32px; height: 32px; border-radius: 9px; }
+.cc-head { text-align: center; margin-top: 8px; }
+.cc-av { width: 64px; height: 64px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 22px; font-weight: 700; margin: 0 auto 10px; }
+.cc-head b { display: block; font-size: 21px; font-weight: 700; letter-spacing: -.4px; }
+.cc-head small { display: block; font-size: 13.5px; color: var(--hint); margin-top: 2px; }
+.cc-tags { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+.cc-tags span { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 12px; }
+.cc-tags .t-acc { color: var(--btn); background: color-mix(in srgb, var(--btn) 14%, transparent); }
+.cc-tags .t-bad { color: var(--danger); background: color-mix(in srgb, var(--danger) 13%, transparent); }
+.cc-tags .t-ok { color: #16A34A; background: color-mix(in srgb, #16A34A 13%, transparent); }
+.cc-tags .t-soft { color: var(--hint); background: var(--soft); }
+.cc-acts { display: grid; gap: 6px; margin-top: 18px; }
+.cc-acts > * { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--hint); font-weight: 500; border: 0; background: none; padding: 0; font-family: inherit; text-decoration: none; }
+.cc-acts b { width: 46px; height: 46px; border-radius: 15px; color: #fff; display: grid; place-items: center; }
+.cc-acts b .ic { width: 21px; height: 21px; stroke-width: 2; }
+.cc-acts > *:active b { transform: scale(.94); }
+.cc-stats { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--bg); border-radius: 16px; box-shadow: var(--shadow14); padding: 12px 4px; margin-top: 16px; }
+.cc-stats div { text-align: center; min-width: 0; }
+.cc-stats div + div { border-left: 1px solid var(--sep); }
+.cc-stats span { display: block; font-size: 11.5px; color: var(--hint); }
+.cc-stats b { display: block; font-size: 16px; font-weight: 700; margin-top: 2px; }
+.cc-h { font-size: 12.5px; color: var(--hint); text-transform: uppercase; letter-spacing: .4px; font-weight: 500; margin: 18px 4px 6px; }
+.cc-h + .list { margin-top: 0; }
