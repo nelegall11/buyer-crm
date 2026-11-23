@@ -395,7 +395,7 @@ function render() {
   else view.innerHTML = top ? SCREENS[top.type](top) : TABS[state.tab]();
 
   document.body.classList.toggle('overlay', !!top);
-  document.body.classList.toggle('home', !top && ['today', 'orders', 'profile'].includes(state.tab) && !state.loading && !state.error);
+  document.body.classList.toggle('home', !top && ['today', 'orders', 'profile', 'clients'].includes(state.tab) && !state.loading && !state.error);
   $('#title').textContent = top ? screenTitle(top) : state.tab === 'today' ? greetingTitle() : TAB_TITLES[state.tab];
   $('#backBtn').hidden = IN_TG || !top;
   $('#setBtn').hidden = !!top || state.loading || !!state.error;
@@ -426,8 +426,7 @@ function screenTitle(top) {
   if (top.type === 'calc') return 'Сколько стоит?';
   if (top.type === 'settings') return 'Настройки';
   if (top.type === 'client') {
-    const o = state.orders.find(x => clientKey(x) === top.key);
-    return o ? o.client : 'Клиент';
+    return 'Клиент'; // имя крупно в самой карточке
   }
   return '';
 }
@@ -1385,40 +1384,43 @@ function clientScreen({ key }) {
   const likes = clientLikes(key);
   const nextText = rhythm ? (rhythm.next < Date.now() ? 'уже пора написать' : `следующий ~ ${new Date(rhythm.next).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })}`) : '';
 
+  const note = noteOf(key);
+  const bd = note.birthday ? birthdayIn(note.birthday) : null;
+  const acts = [
+    chat ? `<button data-act="open" data-url="${esc(chat)}"><b style="background:#25D366">${icon('chat')}</b>WhatsApp</button>` : '',
+    tel ? `<a href="${esc(tel)}"><b style="background:#2F7BF6">${icon('phone')}</b>Позвонить</a>` : '',
+    insta ? `<button data-act="open" data-url="https://ig.me/m/${esc(insta)}"><b style="background:linear-gradient(135deg,#F59E0B,#EC4899,#8B5CF6)">${icon('insta')}</b>Instagram</button>` : '',
+    `<button data-act="reminderSheet" data-key="${esc(key)}" data-name="${esc(c.name)}"><b style="background:#F59E0B">${icon('bell')}</b>Напомнить</button>`,
+    `<button data-act="newForClient" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}"><b style="background:var(--btn)">${icon('plus')}</b>Заказ</button>`,
+  ].filter(Boolean);
+  const noteAttrs = `data-act="noteSheet" data-key="${esc(key)}" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}"`;
+  const chev = `<span class="pf-c">${icon('chevron')}</span>`;
+  const likeText = [...likes.shops, ...likes.sizes].join(' · ');
   return `
-    <div class="card">
-      <div class="row">
-        <span class="ava big">${esc(initials(c.name))}</span>
-        <div class="grow">
-          <b class="ellipsis" style="display:block;font-size:18px">${esc(c.name)}${st.vip ? ` <span class="star">${icon('star')}</span>` : ''}</b>
-          <div class="hint small">${esc(c.phone || (insta ? '' : 'без телефона'))}${insta ? `${c.phone ? ' · ' : ''}@${esc(insta)}` : ''}${isFinite(st.first) ? ` · клиент с ${fmtDate(new Date(st.first).toISOString(), true)}` : ''}</div>
-        </div>
-      </div>
-      <div class="act-line">
-        <button class="btn ${arrived ? '' : 'primary'}" data-act="newForClient" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}">${icon('plus')}Заказ</button>
-        ${chat ? `<button class="rbtn wa-ic" data-act="open" data-url="${esc(chat)}" aria-label="WhatsApp">${icon('chat')}</button>` : ''}
-        ${insta ? `<button class="rbtn ig-ic" data-act="open" data-url="https://ig.me/m/${esc(insta)}" aria-label="Instagram">${icon('insta')}</button>` : ''}
-        ${tel ? `<a class="rbtn" href="${esc(tel)}" aria-label="Позвонить">${icon('phone')}</a>` : ''}
-        <button class="rbtn" data-act="reminderSheet" data-key="${esc(key)}" data-name="${esc(c.name)}" aria-label="Напомнить мне">${icon('bell')}</button>
+    <div class="cc-head">
+      <span class="cc-av" style="${avStyle(c.name)}">${esc(initials(c.name))}</span>
+      <b>${esc(c.name)}</b>
+      <small>${esc(c.phone || (insta ? '' : 'без телефона'))}${insta ? `${c.phone ? ' · ' : ''}@${esc(insta)}` : ''}</small>
+      <div class="cc-tags">
+        ${st.vip ? '<span class="t-acc">★ Постоянный</span>' : st.count >= 3 ? '<span class="t-acc">Постоянный</span>' : st.count <= 1 ? '<span class="t-soft">Новый клиент</span>' : ''}
+        ${st.debt > 0 ? `<span class="t-bad">Долг ${money(st.debt)}</span>` : '<span class="t-ok">Всё оплачено</span>'}
       </div>
     </div>
-    ${arrived ? `<button class="btn primary" data-act="openHandover" data-key="${esc(key)}">${icon('gift')}Выдать прибывшее (${arrived})</button>` : ''}
-
-    <div class="kpi4">
-      <div class="card"><span class="hint small">Купил(а) на</span><b class="money">${moneyShort(st.total)}</b><span class="hint small">${ordersWord(st.count)}</span></div>
-      <div class="card"><span class="hint small">Принес(ла) прибыли</span><b class="money ok">${moneyShort(st.profit)}</b><span class="hint small">ср. чек ${moneyShort(st.count ? st.total / st.count : 0)}</span></div>
-      <div class="card"><span class="hint small">Заказывает</span><b>${rhythm ? esc(rhythm.text) : 'пока 1 раз'}</b><span class="hint small">${esc(nextText) || '&nbsp;'}</span></div>
-      <div class="card"><span class="hint small">Долг</span>${st.debt > 0 ? `<b class="debt money">${moneyShort(st.debt)}</b>` : '<b class="ok">нет</b>'}<span class="hint small">${st.debt > 0 ? 'ждём оплату' : 'всё оплачено'}</span></div>
+    <div class="cc-acts" style="grid-template-columns:repeat(${acts.length},1fr)">${acts.join('')}</div>
+    ${arrived ? `<button class="btn primary" data-act="openHandover" data-key="${esc(key)}" style="margin-top:14px">${icon('gift')}Выдать прибывшее (${arrived})</button>` : ''}
+    <div class="cc-stats">
+      <div><span>Заказов</span><b>${st.count}</b></div>
+      <div><span>Купил(а) на</span><b class="money">${moneyShort(st.total)}</b></div>
+      <div><span>Ваша прибыль</span><b class="money ok">${moneyShort(st.profit)}</b></div>
     </div>
-
-    ${likes.shops.length || likes.sizes.length ? `
-      <div class="card">
-        <div class="hint small" style="margin-bottom:6px">Что любит</div>
-        <div class="tags">${likes.shops.map(x => `<span class="tag">${esc(x)}</span>`).join('')}${likes.sizes.map(x => `<span class="tag soft">${esc(x)}</span>`).join('')}</div>
-      </div>` : ''}
-    ${clientNoteHtml(key, c)}
-    ${active.length ? `<div class="section-title">В работе · ${active.length}</div><div class="list">${active.map(orderRow).join('')}</div>` : ''}
-    ${closed.length ? `<div class="section-title">Завершённые · ${closed.length}</div><div class="list">${closed.map(orderRow).join('')}</div>` : ''}`;
+    <div class="cl-g">
+      <div class="cl-r"><span class="pf-i" style="background:#8B5CF6">${icon('repeat')}</span><span class="cl-t"><b>Заказывает ${rhythm ? esc(rhythm.text) : 'пока 1 раз'}</b><small>${esc(nextText) || (isFinite(st.first) ? `клиент с ${fmtDate(new Date(st.first).toISOString(), true)}` : '')}</small></span></div>
+      ${likeText ? `<div class="cl-r"><span class="pf-i" style="background:#F59E0B">${icon('star')}</span><span class="cl-t"><b>Что любит</b><small>${esc(likeText)}</small></span></div>` : ''}
+      <div class="cl-r" ${noteAttrs}><span class="pf-i" style="background:#0EA5E9">${icon('note')}</span><span class="cl-t"><b>Заметки</b><small>${note.note ? esc(note.note) : 'Размеры, любимые бренды — чтобы не спрашивать'}</small></span>${chev}</div>
+      <div class="cl-r" ${noteAttrs}><span class="pf-i" style="background:#EC4899">${icon('cake')}</span><span class="cl-t"><b>День рождения</b><small>${note.birthday ? esc(note.birthday) + (bd === 0 ? ' — сегодня!' : bd !== null && bd <= 7 ? ` — через ${daysWord(bd)}` : '') : 'Не указан'}</small></span>${chev}</div>
+    </div>
+    ${active.length ? `<div class="cc-h">В работе · ${active.length}</div><div class="list o14-list">${active.map(orderRow).join('')}</div>` : ''}
+    ${closed.length ? `<div class="cc-h">Завершённые · ${closed.length}</div><div class="list o14-list">${closed.map(orderRow).join('')}</div>` : ''}`;
 }
 
 // Поиск по старым заказам на сервере (с паузой, чтобы не искать на каждую букву)
@@ -4109,17 +4111,33 @@ function clientSeg(c, seg) {
 function clientsTab() {
   if (!state.analytics && !state.analyticsError) loadAnalytics(); // с архивом цифры по клиентам точнее
   const all = clientStats();
+  const debtors = all.filter(c => c.debt > 0).length;
   const chips = CLIENT_SEGS.map(([v, label]) => {
     const n = all.filter(c => clientSeg(c, v)).length;
-    return n || state.cseg === v ? `<button class="chip ${state.cseg === v ? 'on' : ''}" data-act="cseg" data-v="${v}">${label}<span class="n">${n}</span></button>` : '';
+    return n || state.cseg === v ? `<button class="o14-chip ${state.cseg === v ? 'on' : ''}" data-act="cseg" data-v="${v}">${label}${v === 'all' ? '' : `<b>${n}</b>`}</button>` : '';
   }).join('');
   return `
+    <div class="h14-hd o14-hd">
+      <div class="grow"><b>Клиенты</b><small>${all.length} ${clientsWord(all.length)}${debtors ? ` · ${debtors} ${debtors === 1 ? 'должен' : 'должны'}` : ''}</small></div>
+    </div>
     <div class="search-wrap">${icon('search')}
       <input id="csearch" class="input search" type="search" placeholder="Имя или телефон" value="${esc(state.cquery)}" autocomplete="off">
     </div>
-    <div class="chips">${chips}</div>
-    <div class="toolbar"><button class="link-btn" data-act="csort">${icon('sort')}${CLIENT_SORTS[state.csort]}</button></div>
+    <div class="o14-chips">${chips}</div>
     <div id="clientList">${clientsListHtml()}</div>`;
+}
+
+function clientsWord(n) {
+  return n % 10 === 1 && n % 100 !== 11 ? 'клиент' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'клиента' : 'клиентов';
+}
+
+// Цвет кружка клиента — всегда один и тот же для одного имени
+const AV_GRADS = [['#60A5FA', '#2563EB'], ['#F472B6', '#DB2777'], ['#34D399', '#059669'], ['#FBBF24', '#EA580C'], ['#A78BFA', '#7C3AED'], ['#22D3EE', '#0891B2']];
+function avStyle(name) {
+  let h = 0;
+  for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const [a, b] = AV_GRADS[h % AV_GRADS.length];
+  return `background:linear-gradient(135deg,${a},${b})`;
 }
 
 function clientsListHtml() {
@@ -4137,8 +4155,8 @@ function clientsListHtml() {
   if (!list.length) return emptyHtml('🤷', 'Никого не нашли', q ? 'Попробуйте часть имени или последние 4 цифры телефона' : 'В этой группе пока никого');
   const shown = list.slice(0, state.limit);
   const rest = list.length - shown.length;
-  return `<p class="hint small" style="margin:0 4px 8px">${list.length} ${list.length % 10 === 1 && list.length % 100 !== 11 ? 'клиент' : 'клиентов'}${state.cseg === 'lost' ? ' — напишите им, чтобы вернуть' : ''}${!state.analytics ? ' · загружаю историю…' : ''}</p>
-    <div class="list">${shown.map(clientCard).join('')}</div>` +
+  return `<div class="cl-bar"><span>${list.length} ${clientsWord(list.length)}${state.cseg === 'lost' ? ' — напишите им, чтобы вернуть' : ''}${!state.analytics ? ' · загружаю историю…' : ''}</span><button data-act="csort">${icon('sort')}${CLIENT_SORTS[state.csort]}</button></div>
+    <div class="cl-g">${shown.map(clientCard).join('')}</div>` +
     (rest > 0 ? `<button class="btn" data-act="moreClients">Показать ещё ${Math.min(rest, PAGE)} из ${rest}</button>` : '');
 }
 
@@ -4146,20 +4164,19 @@ function clientsListHtml() {
 function clientCard(c) {
   const lost = c.days > 60 && !c.active;
   const back = lost ? waLink(c.phone, fillText(state.texts.comeback || '', { client: c.name.split(' ')[0], no: '', debt: 0, track: '' })) : null;
-  const sub = c.active ? `${ordersWord(c.count)} · ${c.active} в работе`
+  const when = c.days === 0 ? 'сегодня' : c.days === 1 ? 'вчера' : daysWord(c.days) + ' назад';
+  const sub = c.isNew ? `новый клиент · ${when}`
+    : c.active ? `${ordersWord(c.count)} · ${c.active} в работе`
     : lost ? `${ordersWord(c.count)} · <span class="slow">не было ${daysWord(c.days)}</span>`
-    : `${ordersWord(c.count)} · последний ${c.days === 0 ? 'сегодня' : daysWord(c.days) + ' назад'}`;
-  const right = c.debt > 0 ? `<div class="debt money">${moneyShort(c.debt)}</div><div class="hint small">долг</div>`
+    : `${ordersWord(c.count)} · ${when}`;
+  const right = c.debt > 0 ? `<span class="cl-v debt money">долг ${moneyShort(c.debt)}</span>`
     : back ? `<button class="rbtn sm wa-ic" data-act="open" data-url="${esc(back)}" aria-label="Написать">${icon('chat')}</button>`
-    : `<div class="money">${moneyShort(c.total)}</div><div class="hint small">всего</div>`;
+    : `<span class="cl-v money">${moneyShort(c.total)}</span>`;
   return `
-    <div class="lrow" data-act="openClient" data-key="${esc(c.key)}">
-      <span class="ava">${esc(initials(c.name))}</span>
-      <div class="grow">
-        <div class="l1"><span class="name ellipsis">${esc(c.name)}</span>${c.vip ? `<span class="star">${icon('star')}</span>` : ''}${c.bday !== null && c.bday <= 7 ? `<span class="cake">${icon('cake')}</span>` : ''}${c.isNew ? '<span class="tag">впервые</span>' : ''}</div>
-        <div class="l2">${sub}</div>
-      </div>
-      <div class="rt">${right}</div>
+    <div class="cl-r" data-act="openClient" data-key="${esc(c.key)}">
+      <span class="cl-av" style="${avStyle(c.name)}">${esc(initials(c.name))}</span>
+      <span class="cl-t"><b><span class="ellipsis">${esc(c.name)}</span>${c.vip ? `<span class="cl-star">${icon('star')}</span>` : ''}${c.bday !== null && c.bday <= 7 ? `<span class="cl-cake">${icon('cake')}</span>` : ''}</b><small>${sub}</small></span>
+      ${right}
     </div>`;
 }
 
