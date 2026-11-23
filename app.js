@@ -3317,20 +3317,41 @@ function bizTab() {
   const avg = cur.length ? rev / cur.length : 0, avgPrev = prev.length ? revPrev / prev.length : 0;
   const margin = rev ? Math.round(prof / rev * 100) : 0;
 
-  const chips = Object.keys(BIZ_PERIODS).map(k =>
-    `<button class="chip ${k === period ? 'on' : ''}" data-act="bizPeriod" data-v="${k}">${BIZ_PERIODS[k].label}</button>`).join('');
+  // Новые клиенты: первый заказ попал в этот период
+  const firstBy = new Map();
+  rows.forEach(r => { const k = clientKey(r); const t = new Date(r.date).getTime(); if (!firstBy.has(k) || t < firstBy.get(k)) firstBy.set(k, t); });
+  const newIn = (a, b) => [...firstBy.values()].filter(t => t >= a && t < b).length;
+  const nNew = newIn(from, now + DAY), nNewPrev = newIn(prevFrom, from);
+  const marginPrev = revPrev ? Math.round(profPrev / revPrev * 100) : 0;
+  const d = (x, y, unit = '%') => {
+    if (!y) return `<em>${x ? 'раньше нет данных' : '—'}</em>`;
+    const v = unit === '%' ? Math.round((x - y) / y * 100) : Math.round(x - y);
+    return v === 0 ? '<em>как раньше</em>' : `<em class="${v > 0 ? 'up' : 'dn'}">${v > 0 ? '↑' : '↓'} ${Math.abs(v)}${unit === '%' ? '%' : unit}</em>`;
+  };
+  const m = monthStats();
+  const daysIn = m.days.length + m.daysLeft;
+  const forecast = m.days.length ? Math.round(m.profit / m.days.length * daysIn) : 0;
+  const pDelta = profPrev ? Math.round((prof - profPrev) / profPrev * 100) : null;
 
   return `
-    <div class="chips" style="padding-top:4px">${chips}</div>
+    <div class="bz-seg">${Object.keys(BIZ_PERIODS).map(k =>
+      `<button class="${k === period ? 'on' : ''}" data-act="bizPeriod" data-v="${k}">${BIZ_PERIODS[k].label}</button>`).join('')}</div>
+    <div class="bz-hero">
+      <small>Прибыль · ${esc(P.label.toLowerCase())}</small>
+      <b class="money">${money(prof)}</b>
+      <span>${pDelta === null ? 'раньше данных нет' : pDelta === 0 ? `= ${esc(P.prev)}` : `<em class="${pDelta > 0 ? 'up' : 'dn'}">${pDelta > 0 ? '↑' : '↓'} ${Math.abs(pDelta)}%</em> ${esc(P.prev)}`}</span>
+      ${forecast > 0 ? `<div class="bz-fc">${icon('chart')}Прогноз прибыли на ${esc(m.monthName)} <b class="money">≈ ${moneyShort(forecast)}</b></div>` : ''}
+    </div>
+    <div class="bz-k">
+      <div><span>Выручка</span><b class="money">${moneyShort(rev)}</b>${d(rev, revPrev)}</div>
+      <div><span>Маржа</span><b>${margin}%</b>${revPrev ? d(margin, marginPrev, ' п.') : '<em>—</em>'}</div>
+      <div><span>Заказов</span><b>${cur.length}</b>${d(cur.length, prev.length, '')}</div>
+      <div><span>Средний чек</span><b class="money">${moneyShort(avg)}</b>${d(avg, avgPrev)}</div>
+      <div><span>Новых клиентов</span><b>${nNew}</b>${d(nNew, nNewPrev, '')}</div>
+      <div><span>Прибыль с заказа</span><b class="money">${moneyShort(cur.length ? prof / cur.length : 0)}</b>${d(cur.length ? prof / cur.length : 0, prev.length ? profPrev / prev.length : 0)}</div>
+    </div>
 
     ${bizGoalHtml(rows)}
-
-    <div class="tiles">
-      <div class="tile neutral kpi"><span class="tile-l">Выручка</span><span class="tile-v">${moneyShort(rev)}</span>${deltaHtml(rev, revPrev, P.prev)}</div>
-      <div class="tile neutral kpi"><span class="tile-l">Прибыль · ${margin}%</span><span class="tile-v ok">${moneyShort(prof)}</span>${deltaHtml(prof, profPrev, P.prev)}</div>
-      <div class="tile neutral kpi"><span class="tile-l">Заказов</span><span class="tile-v">${cur.length}</span>${deltaHtml(cur.length, prev.length, P.prev)}</div>
-      <div class="tile neutral kpi"><span class="tile-l">Средний чек</span><span class="tile-v">${moneyShort(avg)}</span>${deltaHtml(avg, avgPrev, P.prev)}</div>
-    </div>
 
     <div class="card chart-card">
       <div class="row between" style="margin-bottom:8px">
