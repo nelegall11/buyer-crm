@@ -28,7 +28,7 @@ const S = { WAIT: 0, PAID: 1, BOUGHT: 2, STOCK: 3, WAY: 4, ARRIVED: 5, DONE: 6, 
 // Красный не используем: он только для долгов. «Ждёт оплаты» — спокойный серо-синий.
 const STATUS_COLORS = ['#9a9aa2', '#d1a03c', '#d9804a', '#9b85cf', '#4f8fcf', '#3aa199', '#3f9a66', '#c4c4c8'];
 const TEXT_KEYS = [null, 'paid', 'bought', 'stock', 'way', 'arrived', 'done', null];
-const TAB_TITLES = { today: 'Сегодня', orders: 'Заказы', new: 'Новый заказ', clients: 'Клиенты', biz: 'Бизнес' };
+const TAB_TITLES = { today: 'Сегодня', orders: 'Заказы', new: 'Новый заказ', clients: 'Клиенты', biz: 'Бизнес', profile: 'Профиль' };
 const DRAFT_KEY = 'buyercrm-draft';
 const PAGE = 30; // по сколько заказов показывать в списке
 
@@ -395,12 +395,15 @@ function render() {
   else view.innerHTML = top ? SCREENS[top.type](top) : TABS[state.tab]();
 
   document.body.classList.toggle('overlay', !!top);
-  document.body.classList.toggle('home', !top && (state.tab === 'today' || state.tab === 'orders') && !state.loading && !state.error);
+  document.body.classList.toggle('home', !top && ['today', 'orders', 'profile'].includes(state.tab) && !state.loading && !state.error);
   $('#title').textContent = top ? screenTitle(top) : state.tab === 'today' ? greetingTitle() : TAB_TITLES[state.tab];
   $('#backBtn').hidden = IN_TG || !top;
   $('#setBtn').hidden = !!top || state.loading || !!state.error;
 
-  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === state.tab));
+  const navTab = state.tab === 'biz' ? 'profile' : state.tab; // «Бизнес» открывается из профиля
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === navTab));
+  const navMe = $('#navMe');
+  if (navMe && !state.loading) { const av = meAvatar(); if (navMe.dataset.av !== av) { navMe.innerHTML = av; navMe.dataset.av = av; } }
   if (!state.loading && !state.error) {
     const n = attentionItems().length;
     $('#cntToday').textContent = n || '';
@@ -638,6 +641,7 @@ const ACTIONS = {
     render();
   },
   attnKind: d => { state.attnKind = d.v; render(); },
+  bestClients: () => { state.csort = 'total'; state.cseg = 'all'; switchTab('clients'); },
   goSearch: () => {
     switchTab('orders');
     const el = $('#search');
@@ -702,8 +706,10 @@ const ACTIONS = {
   bizBar: d => { state.bizSel = Number(d.i); render(); },
   bizTable: () => { state.bizTable = !state.bizTable; render(); },
   bizRetry: () => { state.analyticsError = null; render(); },
-  openSettings: () => {
+  openSettings: d => {
     const st = state.settings;
+    const sec = d && d.sec;
+    if (sec) setTimeout(() => { const el = document.getElementById('set-' + sec); if (el) el.scrollIntoView({ block: 'start' }); }, 30);
     openScreen({
       type: 'settings', dirty: false, open: null,
       form: {
@@ -1063,6 +1069,7 @@ const TABS = {
   new: newOrderTab,
   clients: clientsTab,
   biz: bizTab,
+  profile: profileTab,
 };
 
 function currentScreen() { return state.stack[state.stack.length - 1]; }
@@ -2837,15 +2844,14 @@ function heroHtml() {
 function todayTab() {
   if (!state.analytics && !state.analyticsError) loadAnalytics();
   const dateText = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
-  const u = IN_TG && tg.initDataUnsafe && tg.initDataUnsafe.user;
-  const ava = u && u.photo_url ? `<img src="${esc(u.photo_url)}" alt="">` : esc(((u && u.first_name) || state.settings.shopName || 'Я').replace(/[^\p{L}]/gu, '').charAt(0).toUpperCase() || 'Я');
+  const ava = meAvatar();
   const tasks = homeTasks();
   const rem = homeReminders();
   return `
     <div class="h14-hd">
       <div class="grow"><small>${esc(dateText.charAt(0).toUpperCase() + dateText.slice(1))}</small><b>${esc(greetingTitle())}</b></div>
       <button class="h14-ib" data-act="goSearch" aria-label="Поиск">${icon('search')}</button>
-      <button class="h14-me" data-act="openSettings" aria-label="Профиль и настройки">${ava}</button>
+      <button class="h14-me" data-act="tab" data-tab="profile" aria-label="Профиль">${ava}</button>
     </div>
     ${moneyCardsHtml()}
     <div class="h14-bar">
@@ -2858,6 +2864,78 @@ function todayTab() {
     ${tasks.length ? tasks.map(taskCardHtml).join('')
       : `<div class="h14-task done"><span class="h14-i" style="background:#16A34A">${icon('check')}</span><span class="grow"><b>На сегодня всё</b><small>Новые дела появятся сами</small></span></div>`}
     ${rem.length ? `<div class="h14-sec"><b>Напоминания</b></div><div class="h14-rem">${rem.join('')}</div>` : ''}`;
+}
+
+// Аватарка байера: фото из Telegram или первая буква имени
+function tgUser() { return IN_TG && tg.initDataUnsafe && tg.initDataUnsafe.user; }
+function meAvatar() {
+  const u = tgUser();
+  if (u && u.photo_url) return `<img src="${esc(u.photo_url)}" alt="">`;
+  return esc(((u && u.first_name) || state.settings.shopName || 'Я').replace(/[^\p{L}]/gu, '').charAt(0).toUpperCase() || 'Я');
+}
+
+// ---------- Профиль ----------
+// Что ещё не настроено: 4 шага, каждый ведёт в нужный раздел настроек
+function setupSteps() {
+  const st = state.settings;
+  return [
+    ['shop', !!String(st.shopName || '').trim()],
+    ['shop', !!String(st.paymentDetails || '').trim()],
+    ['price', Number(st.usd) > 0 && Number(st.retail) > 0],
+    ['money', Number(st.goal) > 0],
+  ];
+}
+
+function profileTab() {
+  if (!state.analytics && !state.analyticsError) loadAnalytics();
+  const st = state.settings;
+  const u = tgUser();
+  const name = u ? [u.first_name, u.last_name].filter(Boolean).join(' ') : (st.shopName || 'Мой магазин');
+  const sub = [u && u.username ? '@' + u.username : '', u ? st.shopName : ''].filter(Boolean).join(' · ') || 'Байер';
+  const steps = setupSteps();
+  const done = steps.filter(s => s[1]).length;
+  const next = (steps.find(s => !s[1]) || ['shop'])[0];
+  const m = monthStats();
+  const ready = !!state.analytics;
+  const textsN = Object.keys(state.texts || {}).length;
+  const row = (act, color, ic, title, val = '', extra = '') => `
+    <button class="pf-r" data-act="${act}" ${extra}><span class="pf-i" style="background:${color}">${icon(ic)}</span>
+      <span class="pf-t">${title}</span>${val ? `<span class="pf-v">${val}</span>` : ''}<span class="pf-c">${icon('chevron')}</span></button>`;
+  const left = 4 - done;
+  return `
+    <h1 class="pf-title">Профиль</h1>
+    <button class="pf-me" data-act="openSettings" data-sec="shop">
+      <span class="pf-ava">${meAvatar()}</span>
+      <span class="pf-t"><b>${esc(name)}</b><small>${esc(sub)}</small></span>
+      <span class="pf-c">${icon('chevron')}</span>
+    </button>
+    ${left ? `<button class="pf-setup" data-act="openSettings" data-sec="${next}">
+      <span class="pf-ring"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--sep)" stroke-width="3.5"/><circle cx="18" cy="18" r="15" fill="none" stroke="var(--btn)" stroke-width="3.5" stroke-linecap="round" stroke-dasharray="${(94.2 * done / 4).toFixed(1)} 94.2" transform="rotate(-90 18 18)"/></svg><b>${done}/4</b></span>
+      <span class="pf-t"><b>Настройте аккаунт</b><small>Осталось ${left} ${left === 1 ? 'шаг' : 'шага'} · пара минут</small></span>
+      <span class="pf-c">${icon('chevron')}</span>
+    </button>` : ''}
+
+    <div class="pf-h">Бизнес</div>
+    <div class="pf-g">
+      ${row('tab', '#2F7BF6', 'chart', 'Выручка и прибыль', ready ? money(m.profit) : '', 'data-tab="biz"')}
+      ${row('tab', '#F97316', 'receipt', 'Расходы', ready ? money(m.expenses) : '', 'data-tab="biz"')}
+      ${row('bestClients', '#30B05A', 'users', 'Лучшие клиенты')}
+    </div>
+
+    <div class="pf-h">Магазин</div>
+    <div class="pf-g">
+      ${row('openSettings', '#F59E0B', 'percent', 'Курс и наценка', `$ ${fmtNum(st.usd || 0)} · ${fmtNum(st.retail || 0)}%`, 'data-sec="price"')}
+      ${row('openSettings', '#7C5CF5', 'card', 'Реквизиты для оплаты', String(st.paymentDetails || '').trim() ? 'есть' : '<span style="color:var(--danger)">нет</span>', 'data-sec="shop"')}
+      ${row('openSettings', '#0EA5E9', 'calendar', 'Цель и налог', Number(st.goal) > 0 ? moneyShort(st.goal) : '', 'data-sec="money"')}
+      ${row('openSettings', '#14B8A6', 'chat', 'Тексты для клиентов', textsN ? String(textsN) : '', 'data-sec="texts"')}
+      ${row('openSettings', '#EF4444', 'bell', 'Когда напоминать', '', 'data-sec="attn"')}
+    </div>
+
+    <div class="pf-h">Приложение</div>
+    <div class="pf-g">
+      ${row('openSettings', '#8B5CF6', 'palette', 'Оформление', 'как в Telegram', 'data-sec="look"')}
+    </div>
+    <p class="pf-ver">Мини-CRM байера · данные хранятся в вашей Google-таблице</p>`;
 }
 
 // Три листаемые карточки: прибыль, долги, «на выкуп»
@@ -3906,24 +3984,23 @@ function settingsScreen(t) {
 
   const look = getLook();
   return `
-    <div class="section-title">Оформление</div>
+    <div class="section-title" id="set-look">Оформление</div>
     <div class="card">
-      <div class="swatches">${PALETTES.map(([id, name, color]) => `
-        <button class="swatch ${look.palette === id ? 'on' : ''}" data-act="lookPalette" data-v="${id}"><i style="background:${color}"></i>${name}</button>`).join('')}</div>
-      <div class="seg" style="margin-top:12px">
+      <div class="hint small" style="margin-bottom:10px">Светлая или тёмная тема — как в вашем Telegram.</div>
+      <div class="seg">
         <button class="${look.density === 'cozy' ? 'on' : ''}" data-act="lookDensity" data-v="cozy">Просторно</button>
         <button class="${look.density === 'compact' ? 'on' : ''}" data-act="lookDensity" data-v="compact">Компактно</button>
       </div>
       <div class="hint small" style="margin-top:8px">Меняется сразу и только на этом телефоне.</div>
     </div>
 
-    <div class="section-title">Магазин</div>
+    <div class="section-title" id="set-shop">Магазин</div>
     <div class="card">
       ${field('shopName', 'Название магазина', 'placeholder="Например, Aliya Shop"', 'Показывается в чеке и на странице «Где мой заказ?»')}
       ${field('paymentDetails', 'Реквизиты для оплаты', 'placeholder="Kaspi Gold +7 701 000 00 00 (Алия С.)"', 'Отправляются клиенту кнопкой «Отправить реквизиты»')}
     </div>
 
-    <div class="section-title">Цены</div>
+    <div class="section-title" id="set-price">Цены</div>
     <div class="card">
       <div class="fields-row">
         ${field('retail', 'Наценка розница, %', 'inputmode="decimal"')}
@@ -3937,7 +4014,7 @@ function settingsScreen(t) {
       <div class="hint small">Курс меняется и сам — каждый раз, когда вы оформляете заказ с новым курсом.</div>
     </div>
 
-    <div class="section-title">Деньги</div>
+    <div class="section-title" id="set-money">Деньги</div>
     <div class="card">
       <div class="fields-row">
         ${field('goal', 'Цель на месяц, ₸', 'inputmode="numeric" placeholder="5 000 000"')}
@@ -3946,13 +4023,13 @@ function settingsScreen(t) {
       <div class="hint small">Налог нужен для «Можно взять себе». Свою ставку уточните у бухгалтера.</div>
     </div>
 
-    <div class="section-title">«Требует внимания» — через сколько дней</div>
+    <div class="section-title" id="set-attn">«Требует внимания» — через сколько дней</div>
     <div class="card">
       <div class="fields-row">${days('wait', 'Не оплачен')}${days('paid', 'Не выкуплен')}</div>
       <div class="fields-row">${days('way', 'Долго в пути')}${days('arrived', 'Не забирают')}</div>
     </div>
 
-    <div class="section-title">Сообщения клиентам</div>
+    <div class="section-title" id="set-texts">Сообщения клиентам</div>
     <p class="hint small" style="margin:-2px 4px 8px">Пишите своими словами. Вместо слов в фигурных скобках подставится: {client} — имя, {no} — номер заказа, {debt} — долг, {price} — цена, {link} — ссылка, {details} — реквизиты, {track_line} — строка с трек-номером, {debt_line} — строка с доплатой.</p>
     <div class="list">
       ${keys.map(k => {
@@ -4220,6 +4297,10 @@ const ICONS = {
   repeat: '<path d="M4 12V9a3 3 0 0 1 3-3h13M17 3l3 3-3 3M20 12v3a3 3 0 0 1-3 3H4M7 21l-3-3 3-3"/>',
   photo: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-9 8"/>',
   calendar: '<rect x="4" y="5" width="16" height="16" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  chart: '<path d="M4 20V11M10 20V5M16 20v-6M3 20h18"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+  card: '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M6 15h4"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-.5-.2-.9-.5-1.3-.3-.3-.5-.8-.5-1.2 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>',
   percent: '<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.2"/><circle cx="17" cy="17" r="2.2"/>',
   offline: '<path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.5-2.8M19 13a10 10 0 0 0-2.4-1.7M2 9.5a15 15 0 0 1 4.3-2.6M22 9.5A15 15 0 0 0 11 5.6"/><path d="M12 20h.01"/>',
 };
