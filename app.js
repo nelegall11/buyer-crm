@@ -126,6 +126,11 @@ function onFocusOut() {
 
 function start() {
   document.addEventListener('focusin', onFocusIn);
+  document.addEventListener('scroll', e => {
+    if (!e.target || e.target.id !== 'hvCards') return;
+    const c = e.target, i = Math.round(c.scrollLeft / ((c.firstElementChild ? c.firstElementChild.offsetWidth : 1) + 10));
+    document.querySelectorAll('#hvDots i').forEach((d, k) => d.classList.toggle('on', k === i));
+  }, true);
   document.addEventListener('focusout', onFocusOut);
   document.addEventListener('touchstart', onTouchStart, { passive: true });
   document.addEventListener('touchmove', onTouchMove, { passive: true });
@@ -390,6 +395,7 @@ function render() {
   else view.innerHTML = top ? SCREENS[top.type](top) : TABS[state.tab]();
 
   document.body.classList.toggle('overlay', !!top);
+  document.body.classList.toggle('home', !top && state.tab === 'today' && !state.loading && !state.error);
   $('#title').textContent = top ? screenTitle(top) : state.tab === 'today' ? greetingTitle() : TAB_TITLES[state.tab];
   $('#backBtn').hidden = IN_TG || !top;
   $('#setBtn').hidden = !!top || state.loading || !!state.error;
@@ -2764,60 +2770,154 @@ function heroHtml() {
 
 function todayTab() {
   if (!state.analytics && !state.analyticsError) loadAnalytics();
-  const by = i => state.orders.filter(o => statusIdx(o.status) === i);
-  const toBuy = buyItems().filter(x => !x.item.bought);
-  const toBuyCost = toBuy.reduce((a, x) => a + (x.item.cost || 0), 0);
-  const debts = debtOrders();
-  const oldDebts = debts.filter(o => daysSince(o.date) >= 7).length;
-  const going = state.orders.filter(o => GOING.includes(statusIdx(o.status)));
-  const goingParts = [[S.BOUGHT, 'выкуп'], [S.STOCK, 'склад'], [S.WAY, 'путь']]
-    .map(([i, w]) => [by(i).length, w]).filter(([n]) => n).map(([n, w]) => `${w} ${n}`).join(' · ');
-  const arrived = by(S.ARRIVED);
-  const arrivedNames = groupByClient(arrived).map(c => c.name.split(' ')[0]);
-  const attn = attentionItems();
-  const parcels = parcelsOnWay().length;
   const dateText = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
-  const tile = (tone, act, v, label, value, sub, ic) => `
-    <button class="tile ${tone}" data-act="${act}" ${v !== null ? `data-v="${v}"` : ''}>
-      <span class="tile-l">${icon(ic)}${label}</span>
-      <span class="tile-v">${value}</span>
-      <span class="tile-s">${sub}</span>
-    </button>`;
-
-  // «Требует внимания» с группами
-  const kinds = [['all', 'Все'], ['debt', 'Долги'], ['buy', 'Выкуп'], ['delivery', 'Доставка']];
-  const f = kinds.some(([k]) => k === state.attnKind) ? state.attnKind : 'all';
-  const shownAttn = f === 'all' ? attn : attn.filter(x => x.kind === f);
-  const attnChips = attn.length ? kinds.map(([k, label]) => {
-    const n = k === 'all' ? attn.length : attn.filter(x => x.kind === k).length;
-    return n ? `<button class="chip sm ${f === k ? 'on' : ''}" data-act="attnKind" data-v="${k}">${label} ${n}</button>` : '';
-  }).join('') : '';
-
+  const u = IN_TG && tg.initDataUnsafe && tg.initDataUnsafe.user;
+  const ava = u && u.photo_url ? `<img src="${esc(u.photo_url)}" alt="">` : esc(((u && u.first_name) || state.settings.shopName || 'Я').replace(/[^\p{L}]/gu, '').charAt(0).toUpperCase() || 'Я');
+  const tasks = homeTasks();
+  const rem = homeReminders();
   return `
-    <div class="today-date">${esc(dateText)}</div>
-    <button class="fake-search" data-act="goSearch">${icon('search')}Клиент, телефон, № или трек</button>
-    ${heroHtml()}
-    <div class="tiles">
-      ${tile('warn', 'openBuy', null, 'Выкупить', `${toBuy.reduce((a, x) => a + x.item.qty, 0)} шт`, toBuyCost ? `на ${moneyShort(toBuyCost)}` : ordersWord(by(S.PAID).length), 'cart')}
-      ${tile('danger', 'tabDebts', null, 'Должны', moneyShort(debts.reduce((a, o) => a + o.debt, 0)), oldDebts ? `<span class="down">${oldDebts}</span> дольше недели` : ordersWord(debts.length), 'wallet')}
-      ${tile('accent', 'tile', 'going', 'Едут', going.length, goingParts || 'пока ничего', 'truck')}
-      ${tile('ok', 'openHandoverList', null, 'Выдать', arrived.length, arrivedNames.length ? esc(arrivedNames.slice(0, 2).join(', ') + (arrivedNames.length > 2 ? ` +${arrivedNames.length - 2}` : '')) : 'пока нечего', 'gift')}
+    <div class="h14-hd">
+      <div class="grow"><small>${esc(dateText.charAt(0).toUpperCase() + dateText.slice(1))}</small><b>${esc(greetingTitle())}</b></div>
+      <button class="h14-ib" data-act="goSearch" aria-label="Поиск">${icon('search')}</button>
+      <button class="h14-me" data-act="openSettings" aria-label="Профиль и настройки">${ava}</button>
     </div>
-
-    <div class="qa-row">
-      <button class="qa main" data-act="newOrderTab"><span>${icon('plus')}</span>Заказ</button>
-      <button class="qa" data-act="openParcel"><span>${icon('box')}${parcels ? `<i>${parcels}</i>` : ''}</span>Посылка</button>
-      <button class="qa" data-act="openCalc"><span>${icon('calc')}</span>Цена</button>
-      <button class="qa" data-act="reminderSheet"><span>${icon('bell')}</span>Напомнить</button>
+    ${moneyCardsHtml()}
+    <div class="h14-bar">
+      <button data-act="openParcel">${icon('truck')}Посылка</button>
+      <button data-act="tabDebts">${icon('cash')}Оплата</button>
+      <button data-act="openHandoverList">${icon('gift')}Выдать</button>
+      <button data-act="openCalc">${icon('calc')}Цена</button>
     </div>
+    <div class="h14-sec"><b>Сделать сегодня</b><span>${tasks.length ? `${tasks.length} ${tasks.length === 1 ? 'дело' : tasks.length < 5 ? 'дела' : 'дел'}` : ''}</span></div>
+    ${tasks.length ? tasks.map(taskCardHtml).join('')
+      : `<div class="h14-task done"><span class="h14-i" style="background:#16A34A">${icon('check')}</span><span class="grow"><b>На сегодня всё</b><small>Новые дела появятся сами</small></span></div>`}
+    ${rem.length ? `<div class="h14-sec"><b>Напоминания</b></div><div class="h14-rem">${rem.join('')}</div>` : ''}`;
+}
 
-    <div class="section-title row between"><span>Требует внимания</span>
-      ${attn.length > 4 ? `<button class="link-btn" data-act="openAttention">Все ${attn.length}</button>` : ''}</div>
-    ${attn.length ? `<div class="chips plain">${attnChips}</div>
-      <div class="list">${shownAttn.slice(0, 4).map(attentionRow).join('')}</div>`
-      : `<div class="card row"><span class="done-ic sm">${icon('check')}</span><div><b>Всё под контролем</b>
-        <div class="hint small">Застрявших и забытых заказов нет</div></div></div>`}
-    ${plansHtml()}`;
+// Три листаемые карточки: прибыль, долги, «на выкуп»
+function moneyCardsHtml() {
+  const m = monthStats();
+  const ready = !!state.analytics;
+  const delta = ready && m.prevProfit > 0 ? Math.round((m.profit - m.prevProfit) / m.prevProfit * 100) : null;
+  const debts = debtOrders();
+  const debtSum = debts.reduce((a, o) => a + o.debt, 0);
+  const debtClients = groupByClient(debts).length;
+  const oldDebts = debts.filter(o => daysSince(o.date) >= 7).length;
+  const paid = state.orders.filter(o => statusIdx(o.status) === S.PAID);
+  const onHand = paid.reduce((a, o) => a + (Number(o.paid) || 0), 0);
+  return `
+    <div class="h14-cards" id="hvCards">
+      <div class="h14-c h14-profit" data-act="tab" data-tab="biz">
+        <small>Прибыль · ${esc(m.monthName)}</small>
+        <b class="money">${money(m.profit)}</b>
+        <span>${delta !== null ? `<em class="${delta >= 0 ? 'up' : 'down'}">${delta >= 0 ? '↑' : '↓'} ${Math.abs(delta)}%</em> к прошлому месяцу · ` : ''}выручка ${moneyShort(m.revenue)}</span>
+        ${revenueChartHtml()}
+      </div>
+      <div class="h14-c h14-debt" data-act="tabDebts">
+        <small>Вам должны</small>
+        <b class="money">${money(debtSum)}</b>
+        <span>${debtClients ? `${debtClients} ${debtClients === 1 ? 'клиент' : debtClients < 5 ? 'клиента' : 'клиентов'}${oldDebts ? ` · ${oldDebts} дольше недели` : ''}` : 'никто не должен'}</span>
+        <i class="h14-act">Открыть ${icon('chevron')}</i>
+      </div>
+      <div class="h14-c h14-buy" data-act="openBuy">
+        <small>На выкуп</small>
+        <b class="money">${money(onHand)}</b>
+        <span>Клиенты оплатили, ещё не выкуплено · ${ordersWord(paid.length)}</span>
+        <i class="h14-act">Открыть список ${icon('chevron')}</i>
+      </div>
+    </div>
+    <div class="h14-dots" id="hvDots"><i class="on"></i><i></i><i></i></div>`;
+}
+
+// Выручка по дням текущего месяца: столбики, среднее, лучший день
+function revenueChartHtml() {
+  const now = new Date();
+  const from = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+  const n = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const today = now.getDate();
+  const days = Array.from({ length: n }, () => 0);
+  bizRows().forEach(r => { const t = new Date(r.date); if (t.getTime() >= from && t.getMonth() === now.getMonth()) days[t.getDate() - 1] += Number(r.total) || 0; });
+  const past = days.slice(0, today);
+  const max = Math.max(1, ...past);
+  const best = past.indexOf(Math.max(...past));
+  const avg = past.reduce((a, v) => a + v, 0) / Math.max(1, today);
+  const W = 300, H = 62, gap = 2.2, bw = (W - gap * (n - 1)) / n, top = max * 1.08;
+  const y = v => H - v / top * H;
+  const step = top > 400000 ? 200000 : top > 200000 ? 100000 : 50000;
+  let out = '';
+  for (let v = step; v < top; v += step) out += `<line x1="0" x2="${W}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="rgba(255,255,255,.08)"/><text x="${W + 4}" y="${(y(v) + 3).toFixed(1)}" class="h14-ax">${v / 1000}к</text>`;
+  days.forEach((v, i) => {
+    const x = i * (bw + gap);
+    if (i >= today) { out += `<rect x="${x.toFixed(1)}" y="${H - 2}" width="${bw.toFixed(1)}" height="2" rx="1" fill="rgba(255,255,255,.12)"/>`; return; }
+    const yy = Math.min(H - 2, y(v)), r = Math.min(2.5, bw / 2);
+    const fill = i === best && v > 0 ? '#60A5FA' : i === today - 1 ? 'rgba(255,255,255,.38)' : 'rgba(255,255,255,.2)';
+    out += `<path d="M${x.toFixed(1)},${H} V${(yy + r).toFixed(1)} Q${x.toFixed(1)},${yy.toFixed(1)} ${(x + r).toFixed(1)},${yy.toFixed(1)} H${(x + bw - r).toFixed(1)} Q${(x + bw).toFixed(1)},${yy.toFixed(1)} ${(x + bw).toFixed(1)},${(yy + r).toFixed(1)} V${H} Z" fill="${fill}"/>`;
+  });
+  if (avg > 0) out += `<line x1="0" x2="${W}" y1="${y(avg).toFixed(1)}" y2="${y(avg).toFixed(1)}" stroke="#93C5FD" stroke-dasharray="3 3"/>`;
+  [1, 8, 15, 22, n].forEach(d => { out += `<text x="${((d - 1) * (bw + gap) + bw / 2).toFixed(1)}" y="${H + 13}" text-anchor="middle" class="h14-ax">${d}</text>`; });
+  const bx = best * (bw + gap) + bw / 2;
+  const tip = past[best] > 0 ? `<div class="h14-tip" style="left:${(bx / (W + 26) * 100).toFixed(1)}%"><b>${moneyShort(past[best])}</b>${esc(new Date(now.getFullYear(), now.getMonth(), best + 1).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }))}</div>` : '';
+  return `<div class="h14-chart">${tip}<svg viewBox="0 0 ${W + 26} ${H + 16}" role="img" aria-label="Выручка по дням">${out}</svg></div>`;
+}
+
+// Дела на сегодня — появляются, только когда они есть
+function homeTasks() {
+  const by = i => state.orders.filter(o => statusIdx(o.status) === i);
+  const list = [];
+  attentionItems().filter(x => x.prio === 0).forEach(x => list.push({
+    ic: 'calendar', color: '#EF4444', title: `№${x.o.no} · ${x.o.client}`, sub: x.text.charAt(0).toUpperCase() + x.text.slice(1),
+    act: 'openOrder', data: `data-no="${x.o.no}"`, right: icon('chevron'),
+  }));
+  const paid = by(S.PAID);
+  const toBuy = buyItems().filter(x => !x.item.bought);
+  if (paid.length) list.push({ ic: 'cart', color: '#F97316', title: 'Выкупить', sub: `Оплачены · ${moneyShort(toBuy.reduce((a, x) => a + (x.item.cost || 0), 0))}`, act: 'openBuy', num: paid.length });
+  const wait = by(S.WAIT);
+  const debts = debtOrders().filter(o => statusIdx(o.status) !== S.WAIT);
+  if (wait.length || debts.length) list.push({ ic: 'cash', color: '#F59E0B', title: 'Ждут оплаты', sub: [wait.length ? `${wait.length} новых` : '', debts.length ? `${debts.length} с долгом` : ''].filter(Boolean).join(' · '), act: 'tabDebts', num: wait.length + debts.length });
+  const toSend = state.orders.filter(o => [S.BOUGHT, S.STOCK].includes(statusIdx(o.status)));
+  if (toSend.length) list.push({ ic: 'truck', color: '#0EA5E9', title: 'Отправить посылку', sub: 'Выкуплены и ждут отправки', act: 'tile', data: 'data-v="going"', num: toSend.length });
+  const arrived = by(S.ARRIVED);
+  if (arrived.length) list.push({ ic: 'gift', color: '#16A34A', title: 'Выдать', sub: `Ждут ${groupByClient(arrived).length} клиентов`, act: 'openHandoverList', num: arrived.length });
+  return list;
+}
+
+function taskCardHtml(t) {
+  return `<button class="h14-task" data-act="${t.act}" ${t.data || ''}>
+    <span class="h14-i" style="background:${t.color}">${icon(t.ic)}</span>
+    <span class="grow"><b>${esc(t.title)}</b><small>${esc(t.sub)}</small></span>
+    ${t.num ? `<span class="h14-n">${t.num}</span>` : t.right || ''}
+  </button>`;
+}
+
+// Свои напоминания на сегодня и дни рождения сегодня — короткими строками
+function homeReminders() {
+  const now = new Date();
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const rows = [];
+  (state.reminders || []).filter(r => new Date(r.when) < end).sort((a, b) => new Date(a.when) - new Date(b.when)).forEach(r => {
+    const t = new Date(r.when);
+    const due = t <= now;
+    rows.push(`<div class="h14-rr">
+      <span class="h14-ri" style="background:#8B5CF6">${icon('bell')}</span>
+      <span class="grow" ${r.no ? `data-act="openOrder" data-no="${r.no}"` : r.key ? `data-act="openClient" data-key="${esc(r.key)}"` : ''}>${esc(r.text)}</span>
+      <span class="h14-rv ${due ? 'now' : ''}">${due ? 'пора' : t.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}</span>
+      <button class="h14-rx" data-act="reminderDone" data-id="${esc(r.id)}" aria-label="Готово">${icon('check')}</button>
+    </div>`);
+  });
+  const clients = groupByClient(state.orders);
+  Object.keys(state.notes || {}).forEach(key => {
+    const n = state.notes[key];
+    if (!n.birthday || birthdayIn(n.birthday) !== 0) return;
+    const c = clients.find(x => x.key === key) || (state.clients || []).map(x => ({ key: clientKey({ client: x.name, phone: x.phone }), ...x })).find(x => x.key === key);
+    if (!c) return;
+    const url = waLink(c.phone, fillText(state.texts.birthday || '{client}, с днём рождения! 🎂', { client: c.name.split(' ')[0], no: '', debt: 0, track: '' }));
+    rows.push(`<div class="h14-rr">
+      <span class="h14-ri" style="background:#EC4899">${icon('cake')}</span>
+      <span class="grow" data-act="openClient" data-key="${esc(key)}">ДР · ${esc(c.name)}</span>
+      ${url ? `<button class="h14-rv link" data-act="open" data-url="${esc(url)}">Поздравить</button>` : '<span class="h14-rv">сегодня</span>'}
+    </div>`);
+  });
+  return rows;
 }
 
 // «В планах»: мои напоминания и ближайшие дни рождения — одним списком
