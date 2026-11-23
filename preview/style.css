@@ -1106,3 +1106,57 @@ body.home .top { display: none; }
 .h14-rv.link { color: var(--btn); }
 .h14-rx { width: 28px; height: 28px; border-radius: 50%; border: 0; background: var(--soft); color: var(--hint); display: grid; place-items: center; flex: none; padding: 0; }
 .h14-rx .ic { width: 15px; height: 15px; }
+
+
+/* ---------- Заказы (v14) ---------- */
+.o14-hd small { order: 2; }
+.o14-hd .grow { display: flex; flex-direction: column; }
+.o14-hd .grow b { order: 1; }
+.o14-sel { display: flex; align-items: center; justify-content: space-between; height: 52px; padding: 8px 4px 0; }
+.o14-sel b { font-size: 17px; font-weight: 600; }
+.o14-sel button { background: none; border: 0; color: var(--btn); font-size: 15px; font-weight: 500; padding: 6px 0; }
+.search-wrap { margin-top: 12px; }
+.input.search { height: 40px; border-radius: 12px; background: var(--bg); border: 0; box-shadow: var(--shadow14); }
+.o14-mode { display: flex; background: var(--soft); border-radius: 12px; padding: 3px; margin-top: 12px; }
+.o14-mode button { flex: 1; border: 0; background: none; padding: 8px 0; border-radius: 9px; font-size: 13.5px; font-weight: 600; color: var(--hint); }
+.o14-mode button.on { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgba(15, 23, 42, .12); }
+.o14-chips { display: flex; gap: 6px; margin: 12px -12px 0; padding: 0 12px; overflow-x: auto; scrollbar-width: none; }
+.o14-chips::-webkit-scrollbar { display: none; }
+.o14-chip { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 0; border-radius: 16px; background: var(--bg); box-shadow: var(--shadow14); font-size: 13px; font-weight: 500; color: var(--text); }
+.o14-chip b { font-weight: 700; color: var(--hint); }
+.o14-chip.on { background: var(--text); color: var(--bg); }
+.o14-chip.on b { color: inherit; opacity: .7; }
+.o14-chip .ic { width: 15px; height: 15px; }
+.o14-urg { display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 12px; padding: 10px 12px; border: 0; border-radius: 14px; background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger); font-size: 13.5px; font-weight: 600; text-align: left; }
+.o14-urg span { flex: 1; }
+.o14-urg .ic { width: 18px; height: 18px; }
+.o14-per { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.o14-pick { display: inline-flex; align-items: center; gap: 4px; height: 34px; padding: 0 10px 0 14px; border: 0; border-radius: 17px; background: var(--bg); box-shadow: var(--shadow14); font-size: 14px; font-weight: 600; color: var(--text); }
+.o14-pick .ic { width: 15px; height: 15px; transform: rotate(90deg); color: var(--hint); }
+.o14-per span { font-size: 13px; color: var(--hint); }
+.o14-sum { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--bg); border-radius: 16px; box-shadow: var(--shadow14); margin-top: 10px; padding: 12px 4px; }
+.o14-sum div { text-align: center; }
+.o14-sum div + div { border-left: 1px solid var(--sep); }
+.o14-sum span { display: block; font-size: 12px; color: var(--hint); }
+.o14-sum b { display: block; font-size: 16px; font-weight: 700; margin-top: 2px; }
+.o14-gh { display: flex; justify-content: space-between; margin: 16px 6px 8px; }
+.o14-gh b { color: var(--text); font-weight: 600; }
+.o14-list { background: var(--bg); border-radius: 16px; box-shadow: var(--shadow14); overflow: hidden; }
+.o14-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px !important; }
+.o14-row + .o14-row { border-top: 1px solid var(--sep); }
+.o14-logo { position: relative; width: 38px; height: 38px; flex: none; }
+.o14-logo .s { width: 38px; height: 38px; border-radius: 11px; color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 15px; }
+.o14-logo .c { position: absolute; right: -5px; bottom: -5px; width: 19px; height: 19px; border-radius: 50%; background: var(--bg); color: var(--text); font-size: 8px; font-weight: 700; display: grid; place-items: center; box-shadow: 0 0 0 2px var(--bg), 0 1px 3px rgba(0, 0, 0, .15); }
+.o14-m b { display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.o14-m small { display: block; font-size: 12.5px; color: var(--hint); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.o14-m small.debt { color: var(--danger); font-weight: 500; }
+.o14-r { text-align: right; flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.o14-r b { font-size: 14.5px; font-weight: 600; }
+.o14-r b.gone { color: var(--hint); text-decoration: line-through; font-weight: 500; }
+.o14-trk { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.o14-trk .bars { display: flex; gap: 2px; }
+.o14-trk .bars i { width: 5px; height: 4px; border-radius: 2px; background: var(--sep); }
+.o14-trk .ic { width: 13px; height: 13px; }
+.o14-sortseg { display: flex; gap: 4px; background: var(--soft); border-radius: 12px; padding: 3px; }
+.o14-sortseg button { flex: 1; border: 0; background: none; padding: 9px 0; border-radius: 9px; font-size: 13px; color: var(--hint); }
+.o14-sortseg button.on { background: var(--bg); color: var(--text); font-weight: 600; }

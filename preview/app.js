@@ -395,7 +395,7 @@ function render() {
   else view.innerHTML = top ? SCREENS[top.type](top) : TABS[state.tab]();
 
   document.body.classList.toggle('overlay', !!top);
-  document.body.classList.toggle('home', !top && state.tab === 'today' && !state.loading && !state.error);
+  document.body.classList.toggle('home', !top && (state.tab === 'today' || state.tab === 'orders') && !state.loading && !state.error);
   $('#title').textContent = top ? screenTitle(top) : state.tab === 'today' ? greetingTitle() : TAB_TITLES[state.tab];
   $('#backBtn').hidden = IN_TG || !top;
   $('#setBtn').hidden = !!top || state.loading || !!state.error;
@@ -816,6 +816,25 @@ const ACTIONS = {
   moreClients: () => { state.limit += PAGE; $('#clientList').innerHTML = clientsListHtml(); },
   more: () => { state.limit += PAGE; $('#orderList').innerHTML = orderListHtml(); },
   selectMode: () => { state.selecting = !state.selecting; state.selected = []; render(); },
+  omode: d => { state.omode = d.v === 'all' ? 'all' : 'work'; state.limit = PAGE; render(); },
+  periodSheet: () => {
+    const cur = state.period14 || 'month';
+    openSheet('period', `<h3>Период</h3><div class="list slist">${Object.keys(PERIODS).map(k => {
+      const r = periodRange(k);
+      const n = state.orders.filter(o => { const t = new Date(o.date).getTime(); return t >= r.from && t < r.to; }).length;
+      return `<button class="lrow srow ${k === cur ? 'cur' : ''}" data-act="setPeriod" data-v="${k}"><span class="grow">${PERIODS[k]}</span><span class="hint">${ordersWord(n)}</span>${k === cur ? icon('check') : ''}</button>`;
+    }).join('')}</div>`);
+  },
+  setPeriod: d => { state.period14 = d.v; state.limit = PAGE; closeSheet(); },
+  ordersMore: () => {
+    const f = String(state.filter);
+    const row = (v, label) => `<button class="lrow srow ${f === String(v) ? 'cur' : ''}" data-act="moreFilter" data-v="${v}"><span class="grow">${label}</span><span class="hint">${state.orders.filter(o => matchFilter(o, v)).length}</span>${f === String(v) ? icon('check') : ''}</button>`;
+    const srt = Object.keys(ORDER_SORTS).map(k => `<button class="${state.sort === k ? 'on' : ''}" data-act="sortPick" data-v="${k}">${ORDER_SORTS[k]}</button>`).join('');
+    openSheet('more', `<h3>Показать</h3><div class="list slist">${row('debt', 'С долгом')}${row(S.DONE, 'Выданы')}${row(S.CANCEL, 'Отменены')}${row('all', 'Все заказы')}</div>
+      <div class="section-title">Сначала</div><div class="seg o14-sortseg">${srt}</div>`);
+  },
+  moreFilter: d => { state.filter = ['debt', 'all'].includes(d.v) ? d.v : Number(d.v); state.limit = PAGE; closeSheet(); },
+  sortPick: d => { state.sort = d.v; state.limit = PAGE; closeSheet(); },
   // Выбрать все заказы, которые сейчас видны по фильтру и поиску (или снять выбор)
   selectAll: () => {
     const nos = filteredOrders().map(o => o.no);
@@ -1056,29 +1075,66 @@ function ordersTab() {
   if (!state.orders.length) {
     return emptyHtml('📭', 'Заказов пока нет', 'Нажмите «+» внизу, чтобы добавить первый');
   }
-  const chip = (v, label) => {
-    const n = state.orders.filter(o => matchFilter(o, v)).length;
-    if (!n && String(state.filter) !== String(v)) return '';
-    return `<button class="chip ${String(state.filter) === String(v) ? 'on' : ''}" data-act="filter" data-v="${v}">${label}<span class="n">${n}</span></button>`;
-  };
+  const all = state.omode === 'all';
+  const active = state.orders.filter(o => !isClosed(o));
   const visible = filteredOrders().map(o => o.no);
   const allSel = visible.length && visible.every(n => state.selected.includes(n));
-  const toolbar = state.selecting
-    ? `<button class="link-btn" data-act="selectAll">${allSel ? 'Снять все' : `Выбрать все (${visible.length})`}</button>
-       <button class="link-btn" data-act="selectMode">Отмена</button>`
-    : `<button class="link-btn" data-act="sort">${icon('sort')}${ORDER_SORTS[state.sort]}</button>
-       <button class="link-btn" data-act="selectMode">${icon('checks')}Выбрать</button>`;
-
+  const head = state.selecting
+    ? `<div class="o14-sel"><button data-act="selectMode">Отмена</button><b>Выбрано ${state.selected.length}</b><button data-act="selectAll">${allSel ? 'Снять' : 'Все'}</button></div>`
+    : `<div class="h14-hd o14-hd">
+        <div class="grow"><b>Заказы</b><small>${active.length} в работе · на ${moneyShort(active.reduce((a, o) => a + o.total, 0))}</small></div>
+        <button class="h14-ib" data-act="selectMode" aria-label="Выбрать несколько">${icon('checks')}</button>
+      </div>`;
+  const chip = (v, label) => {
+    const n = state.orders.filter(o => matchFilter(o, v)).length;
+    return `<button class="o14-chip ${String(state.filter) === String(v) ? 'on' : ''}" data-act="filter" data-v="${v}">${label}<b>${n}</b></button>`;
+  };
+  const extra = ['debt', S.DONE, S.CANCEL, 'all'].map(String).includes(String(state.filter));
+  const due = attentionItems().filter(x => x.prio === 0).length;
+  let body;
+  if (!all) {
+    body = `
+      <div class="o14-chips">
+        ${chip('active', 'Все')}${chip(S.WAIT, 'Оплата')}${chip(S.PAID, 'Выкуп')}${chip('going', 'Едут')}${chip(S.ARRIVED, 'Выдать')}
+        <button class="o14-chip ${extra ? 'on' : ''}" data-act="ordersMore">${icon('sort')}${extra ? esc(EXTRA_FILTERS[String(state.filter)] || 'Ещё') : 'Ещё'}</button>
+      </div>
+      ${due && !state.selecting ? `<button class="o14-urg" data-act="openAttention">${icon('calendar')}<span>${due === 1 ? '1 заказ нужен' : `${due} заказа нужны`} к сроку</span>${icon('chevron')}</button>` : ''}`;
+  } else {
+    const p = periodRange();
+    const rows = bizRows().filter(r => { const t = new Date(r.date).getTime(); return t >= p.from && t < p.to; });
+    body = `
+      <div class="o14-per"><button class="o14-pick" data-act="periodSheet">${esc(p.label)}${icon('chevron')}</button><span>${esc(p.range)}</span></div>
+      <div class="o14-sum">
+        <div><span>Заказов</span><b>${rows.length}</b></div>
+        <div><span>Выручка</span><b class="money">${moneyShort(sumBy(rows, 'total'))}</b></div>
+        <div><span>Прибыль</span><b class="money ok">${moneyShort(sumBy(rows, 'profit'))}</b></div>
+      </div>`;
+  }
   return `
+    ${head}
     <div class="search-wrap">${icon('search')}
       <input id="search" class="input search" type="search" placeholder="Имя, телефон, № или трек" value="${esc(state.query)}" autocomplete="off">
     </div>
-    <div class="chips">
-      ${chip('active', 'В работе')}${chip(S.PAID, 'Выкупить')}${chip('going', 'Едут')}${chip(S.ARRIVED, 'Выдать')}
-      ${chip('debt', 'Долги')}${chip(S.WAIT, 'Ждут оплаты')}${chip(S.DONE, 'Выданы')}${chip(S.CANCEL, 'Отменены')}${chip('all', 'Все')}
-    </div>
-    <div class="toolbar">${toolbar}</div>
+    <div class="o14-mode"><button class="${all ? '' : 'on'}" data-act="omode" data-v="work">В работе · ${active.length}</button><button class="${all ? 'on' : ''}" data-act="omode" data-v="all">Все заказы</button></div>
+    ${body}
     <div id="orderList">${orderListHtml()}</div>`;
+}
+
+const EXTRA_FILTERS = { debt: 'С долгом', [String(S.DONE)]: 'Выданы', [String(S.CANCEL)]: 'Отменены', all: 'Все' };
+
+// Период для режима «Все заказы»
+const PERIODS = { month: 'Этот месяц', prev: 'Прошлый месяц', q: '3 месяца', year: 'Этот год', all: 'Всё время' };
+function periodRange(k = state.period14 || 'month') {
+  const now = new Date();
+  const y = now.getFullYear(), m = now.getMonth();
+  const fmt = d => d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+  const end = now.getTime() + 86400000;
+  if (k === 'prev') { const f = new Date(y, m - 1, 1), t = new Date(y, m, 1); return { from: +f, to: +t, label: f.toLocaleString('ru-RU', { month: 'long' }).replace(/^./, c => c.toUpperCase()), range: `${fmt(f)} – ${fmt(new Date(+t - 1))}` }; }
+  if (k === 'q') { const f = new Date(y, m - 2, 1); return { from: +f, to: end, label: '3 месяца', range: `с ${fmt(f)}` }; }
+  if (k === 'year') { const f = new Date(y, 0, 1); return { from: +f, to: end, label: `${y} год`, range: `с 1 января` }; }
+  if (k === 'all') return { from: 0, to: end, label: 'Всё время', range: '' };
+  const f = new Date(y, m, 1);
+  return { from: +f, to: end, label: now.toLocaleString('ru-RU', { month: 'long' }).replace(/^./, c => c.toUpperCase()), range: `${fmt(f)} – ${fmt(now)}` };
 }
 
 // Статусы «едут»: выкуплен, на складе, в пути
@@ -1101,8 +1157,9 @@ function filteredOrders() {
     debt: (a, b) => (b.debt > 0 ? b.debt : 0) - (a.debt > 0 ? a.debt : 0) || b.no - a.no,
     old: (a, b) => (isClosed(a) - isClosed(b)) || new Date(a.statusAt || a.date) - new Date(b.statusAt || b.date),
   };
+  const per = state.omode === 'all' ? periodRange() : null;
   return state.orders
-    .filter(o => matchFilter(o, state.filter))
+    .filter(o => per ? (new Date(o.date).getTime() >= per.from && new Date(o.date).getTime() < per.to) : matchFilter(o, state.filter))
     .filter(o => !q ||
       o.client.toLowerCase().includes(q) ||
       String(o.no) === q.replace('№', '') ||
@@ -1125,44 +1182,29 @@ function dayLabel(iso) {
 
 function orderListHtml() {
   const list = filteredOrders();
-  const archiveHint = state.archived && (state.filter === 'all' || state.filter === S.DONE || state.filter === S.CANCEL || state.query)
+  const archiveHint = state.archived && (state.omode === 'all' || state.filter === 'all' || state.filter === S.DONE || state.filter === S.CANCEL || state.query)
     ? `<p class="hint center">Старые выданные заказы без долга (${state.archived}) не загружаются, чтобы приложение открывалось быстро. Найдите их поиском.</p>` : '';
   if (!list.length) {
     return (state.query ? emptyHtml('🤷', 'Ничего не найдено', 'Попробуйте часть имени, последние 4 цифры телефона или трек-номер')
       : emptyHtml('🎉', 'Здесь пусто', 'Таких заказов нет')) + archiveHint;
   }
-  if (state.mode === 'clients') {
-    const rows = groupByClient(list);
-    const shown = rows.slice(0, state.limit);
-    return `<div class="list">${shown.map(clientRow).join('')}</div>` + archiveHint;
-  }
-  // Итог по тому, что сейчас в списке
-  const total = list.reduce((a, o) => a + (isCancelled(o) ? 0 : o.total), 0);
-  const debt = list.reduce((a, o) => a + (o.debt > 0 && !isCancelled(o) ? o.debt : 0), 0);
-  const strip = `
-    <div class="card sumstrip">
-      <div><span class="hint small">${ordersWord(list.length)}</span><b class="money">${moneyShort(total)}</b></div>
-      <div class="r"><span class="hint small">не оплачено</span><b class="money ${debt ? 'debt' : ''}">${debt ? moneyShort(debt) : 'всё оплачено'}</b></div>
-    </div>`;
-
   const shown = list.slice(0, state.limit);
   const rest = list.length - shown.length;
   let body;
   if (state.sort === 'new') {
-    // Группы по дням: «Сегодня», «Вчера», …
     const groups = [];
     shown.forEach(o => {
       const label = dayLabel(o.date);
       if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, list: [] });
       groups[groups.length - 1].list.push(o);
     });
-    body = groups.map(g => `<div class="gh">${esc(g.label)}</div><div class="list">${g.list.map(orderRow).join('')}</div>`).join('');
+    body = groups.map(g => `<div class="gh o14-gh"><span>${esc(g.label)}</span><b class="money">${money(g.list.reduce((a, o) => a + (isCancelled(o) ? 0 : o.total), 0))}</b></div><div class="list o14-list">${g.list.map(orderRow).join('')}</div>`).join('');
   } else {
-    body = `<div class="list">${shown.map(orderRow).join('')}</div>`;
+    body = `<div class="list o14-list">${shown.map(orderRow).join('')}</div>`;
   }
   let swipeHint = '';
-  try { swipeHint = !state.selecting && 'ontouchstart' in window && !localStorage.getItem('buyercrm-swiped') ? `<p class="hint small center">Смахните заказ вправо — следующий статус, влево — написать в WhatsApp</p>` : ''; } catch (e) { /* нет — не страшно */ }
-  return strip + swipeHint + body +
+  try { swipeHint = !state.selecting && 'ontouchstart' in window && !localStorage.getItem('buyercrm-swiped') ? `<p class="hint small center">Смахните заказ вправо — следующий этап, влево — WhatsApp</p>` : ''; } catch (e) { /* нет — не страшно */ }
+  return swipeHint + body +
     (rest > 0 ? `<button class="btn" data-act="more">Показать ещё ${Math.min(rest, PAGE)} из ${rest}</button>` : '') +
     archiveHint;
 }
@@ -1171,20 +1213,44 @@ function orderListHtml() {
 function orderRow(o) {
   const sel = state.selecting;
   const checked = state.selected.includes(o.no);
-  const debt = o.debt > 0 && !isCancelled(o);
   const i = statusIdx(o.status);
-  const since = daysSince(o.statusAt || o.date);
-  const slow = !isClosed(o) && i !== S.ARRIVED && since >= 7;
+  const cancelled = isCancelled(o);
+  const shop = o.items && o.items[0] ? site(o.items[0].link) : '';
+  const known = shop && shop !== 'Без ссылки';
+  const shopName = known ? shop.split('.')[0].replace(/-demo$/, '').replace(/^./, c => c.toUpperCase()) : '';
+  const letter = ((known ? shopName : o.client) || '?').replace(/[^\p{L}\p{N}]/gu, '').charAt(0).toUpperCase() || '?';
+  const what = o.count > 1 ? `${o.count} ${o.count < 5 ? 'товара' : 'товаров'}` : (o.items && o.items[0] ? productName(o.items[0].link) : '');
+  const debt = o.debt > 0 && !cancelled && i !== S.WAIT;
+  const sub = debt ? `<small class="debt">долг ${money(o.debt)}</small>` : `<small>${esc([shopName, what].filter(Boolean).join(' · ') || `№${o.no}`)}</small>`;
   return `
-    <div class="lrow orow ${checked ? 'checked' : ''}" style="${statusStyle(i)}" data-act="${sel ? 'toggleSel' : 'openOrder'}" data-no="${o.no}" ${sel ? '' : 'data-swipe="1"'}>
-      ${sel ? `<span class="check">${checked ? '✓' : ''}</span>` : `<span class="ava">${esc(initials(o.client))}</span>`}
-      <div class="grow">
-        <div class="l1"><span class="name ellipsis">${esc(o.client)}</span><span class="money">${money(o.total)}</span></div>
-        <div class="l2"><span class="ellipsis">№${o.no} · <span class="st">${esc(o.status)}</span>${slow ? ` · <span class="slow">${daysWord(since)}</span>` : ''}</span>
-          ${debt ? `<span class="debt money">долг ${moneyShort(o.debt)}</span>` : `<span class="nowrap">${o.count} шт</span>`}</div>
-        ${isCancelled(o) ? '' : `<div class="prog">${FLOW.map(k => `<i class="${k <= i ? 'on' : ''}"></i>`).join('')}</div>`}
-      </div>
+    <div class="lrow orow o14-row ${checked ? 'checked' : ''}" data-act="${sel ? 'toggleSel' : 'openOrder'}" data-no="${o.no}" ${sel ? '' : 'data-swipe="1"'}>
+      ${sel ? `<span class="check">${checked ? '✓' : ''}</span>`
+        : `<span class="o14-logo"><span class="s" style="background:${shopColor(known ? shop : o.client)}">${esc(letter)}</span><span class="c">${esc(initials(o.client))}</span></span>`}
+      <div class="grow o14-m"><b>${esc(o.client)}</b>${sub}</div>
+      <div class="o14-r"><b class="money ${cancelled ? 'gone' : ''}">${money(o.total)}</b>${statusTrack(o, i)}</div>
     </div>`;
+}
+
+// Цвет «логотипа» магазина — всегда один и тот же для одного магазина
+const SHOP_COLORS = ['#3D4F7A', '#D9480F', '#0EA5A4', '#7C3AED', '#BE185D', '#2563EB', '#059669', '#B45309'];
+function shopColor(name) {
+  let h = 0;
+  for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return SHOP_COLORS[h % SHOP_COLORS.length];
+}
+
+// Статус под суммой: шкала пути из 5 делений и короткое слово «что дальше»
+function statusTrack(o, i) {
+  if (i === S.CANCEL) return '<span class="o14-trk" style="color:var(--hint)">отменён</span>';
+  if (i === S.DONE) return `<span class="o14-trk" style="color:var(--ok)">${icon('check')}выдан</span>`;
+  const step = { [S.WAIT]: 1, [S.PAID]: 2, [S.BOUGHT]: 3, [S.STOCK]: 3, [S.WAY]: 4, [S.ARRIVED]: 5 }[i] || 1;
+  const look = {
+    [S.WAIT]: ['var(--warn)', 'ждёт оплаты'], [S.PAID]: ['var(--btn)', 'выкупить'],
+    [S.BOUGHT]: ['#0EA5E9', 'отправить'], [S.STOCK]: ['#0EA5E9', 'на складе'],
+    [S.WAY]: ['var(--hint)', `едет · ${daysSince(o.statusAt || o.date)} дн`], [S.ARRIVED]: ['var(--ok)', 'выдать'],
+  }[i] || ['var(--hint)', o.status];
+  const bars = [1, 2, 3, 4, 5].map(k => `<i${k <= step ? ` style="background:${look[0]}"` : ''}></i>`).join('');
+  return `<span class="o14-trk" style="color:${look[0]}"><span class="bars">${bars}</span>${esc(look[1])}</span>`;
 }
 
 // ---------- Клиенты ----------
