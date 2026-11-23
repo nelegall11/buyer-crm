@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Мини-CRM байера · новая версия (демо)</title>
+  <!-- Библиотека Telegram: даёт цвета темы, главную кнопку, кнопку «Назад» и вибрацию -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="style.css?v=14">
+</head>
+<body>
+  <!-- Шапка: заголовок экрана и кнопка «Сводка» -->
+  <header class="top">
+    <button id="backBtn" class="icon-btn" data-act="back" aria-label="Назад" hidden>
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+    </button>
+    <h1 id="title">Сегодня</h1>
+    <span id="syncBadge" class="sync" hidden><i></i><span>сохраняю</span></span>
+    <span id="demoBadge" class="badge" hidden>демо</span>
+    <button id="setBtn" class="icon-btn" data-act="openSettings" aria-label="Настройки" hidden>
+      <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </header>
+
+  <!-- Сюда app.js рисует текущий экран -->
+  <main id="view"></main>
+
+  <!-- Главная кнопка для браузера. Внутри Telegram вместо неё — родная MainButton -->
+  <button id="mainBtn" class="main-btn" hidden></button>
+
+  <!-- Нижнее меню: 4 вкладки и кнопка «+» в центре -->
+  <nav class="tabs" id="tabs">
+    <button data-act="tab" data-tab="today">
+      <svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10.5L12 4l8 6.5V20a1 1 0 0 1-1 1h-4v-6h-6v6H5a1 1 0 0 1-1-1z"/></svg>Сегодня<span class="count" id="cntToday"></span></button>
+    <button data-act="tab" data-tab="orders">
+      <svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9"/></svg>Заказы</button>
+    <button data-act="tab" data-tab="new" class="plus-tab" aria-label="Новый заказ">
+      <span class="plus-circle"><svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>Новый</button>
+    <button data-act="tab" data-tab="clients">
+      <svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/></svg>Клиенты</button>
+    <button data-act="tab" data-tab="biz">
+      <svg class="ti" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V11M10 20V5M16 20v-6M3 20h18"/><path d="M14 6l3-2 3 2"/></svg>Бизнес</button>
+  </nav>
+
+  <!-- Всплывающая снизу панель (оплата, выбор статуса, трек-номер) -->
+  <div id="sheetBg" class="sheet-bg" data-act="sheetClose" hidden></div>
+  <div id="sheet" class="sheet" hidden></div>
+
+  <!-- Короткие уведомления («Сохранено ✅») -->
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- demo.js — выдуманные данные, app.js — само приложение -->
+  <script src="demo.js?v=14"></script>
+  <script src="quick.js?v=14"></script>
+  <script src="app.js?v=14"></script>
+</body>
+</html>
