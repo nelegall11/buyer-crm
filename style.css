@@ -1460,3 +1460,46 @@ body.overlay .card { border-radius: 16px; box-shadow: var(--shadow14); }
 .o15-dates button.on { background: var(--btn); color: var(--btn-text); }
 .o15-dates button .ic { width: 14px; height: 14px; }
 .o15-dates button.x { width: 32px; padding: 0; justify-content: center; color: var(--hint); }
+
+/* ---------- v28: упрощённый экран заказа ---------- */
+#moreBtn { width: 40px; height: 40px; border-radius: 50%; flex: none; background: var(--bg); color: var(--text); box-shadow: var(--shadow14); display: grid; place-items: center; }
+#moreBtn[hidden] { display: none; }
+#moreBtn .ic { width: 20px; height: 20px; }
+.od2-hero { background: var(--bg); border-radius: 22px; box-shadow: var(--shadow14); padding: 14px 16px; margin-top: 6px; }
+.od2-who { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.od2-who .cl-av { width: 42px; height: 42px; font-size: 14px; }
+.od2-who .cl-t b { font-size: 17px; }
+.od2-amt { display: flex; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.od2-amt b { font-size: 30px; font-weight: 700; letter-spacing: -.8px; font-variant-numeric: tabular-nums; }
+.od2-amt b em { font-style: normal; font-size: 18px; color: var(--hint); font-weight: 600; margin-left: 3px; }
+.od2-amt b.gone { color: var(--hint); text-decoration: line-through; }
+.od2-pay { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 10px; border-radius: 9px; font-size: 12.5px; font-weight: 600; }
+.od2-pay .ic { width: 13px; height: 13px; stroke-width: 2.6; }
+.od2-pay.ok { background: color-mix(in srgb, #16A34A 13%, transparent); color: #16A34A; }
+.od2-pay.d { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); }
+.od2-pay.w { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+.od2-pay.gone { background: var(--soft); color: var(--hint); }
+.od2-prof { font-size: 13px; color: var(--hint); margin-top: 4px; }
+.od2-prof b { color: #16A34A; font-weight: 600; }
+.od2-flow { position: relative; margin: 18px 2px 2px; }
+.od2-flow .ln { position: absolute; left: 7px; right: 7px; top: 6px; height: 2px; background: var(--sep); }
+.od2-flow .ln i { position: absolute; left: 0; top: 0; height: 2px; background: var(--btn); }
+.od2-flow .st { position: relative; display: flex; justify-content: space-between; }
+.od2-s { display: flex; flex-direction: column; align-items: center; gap: 7px; width: 14px; }
+.od2-s i { width: 14px; height: 14px; border-radius: 50%; background: var(--bg); border: 2px solid var(--sep); }
+.od2-s.done i { background: var(--btn); border-color: var(--btn); }
+.od2-s.cur i { border-color: var(--btn); box-shadow: 0 0 0 4px color-mix(in srgb, var(--btn) 16%, transparent); }
+.od2-s small { font-size: 10.5px; color: var(--hint); white-space: nowrap; }
+.od2-s.cur small { color: var(--text); font-weight: 600; }
+.od2-flow.off { opacity: .45; }
+.od2-go { margin-top: 16px; }
+.od2-go .ic { width: 19px; height: 19px; stroke-width: 2.4; }
+.od2-hero .od-other { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; padding: 12px 0 2px; }
+.od2-hero .od-other .ic { width: 16px; height: 16px; }
+.od2-acts { display: grid; gap: 8px; margin-top: 10px; }
+.od2-acts button { display: flex; align-items: center; justify-content: center; gap: 7px; height: 46px; border: 0; border-radius: 14px; background: var(--bg); box-shadow: var(--shadow14); color: var(--text); font: inherit; font-size: 14px; font-weight: 500; cursor: pointer; }
+.od2-acts .ic { width: 18px; height: 18px; color: #16A34A; }
+.od2-acts .rc .ic { color: #7C5CF5; }
+.od2-acts .ln .ic { color: #0EA5E9; }
+.od2-acts button:active { transform: scale(.97); }
+.od2-link { color: var(--btn); font-weight: 600; font-size: 14px; flex: none; }
