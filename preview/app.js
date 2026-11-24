@@ -1252,7 +1252,7 @@ function orderRow(o) {
       ${sel ? `<span class="check">${checked ? '✓' : ''}</span>`
         : `<span class="o14-logo"><span class="s" style="background:${shopColor(known ? shop : o.client)}">${esc(letter)}</span><span class="c">${esc(initials(o.client))}</span></span>`}
       <div class="grow o14-m"><b>${esc(o.client)}</b>${sub}</div>
-      <div class="o14-r"><b class="money ${cancelled ? 'gone' : ''}">${money(o.total)}</b>${statusTrack(o, i)}</div>
+      <div class="o14-r"><b class="money ${cancelled ? 'gone' : ''}">${money(o.total)}</b>${sel ? statusTrack(o, i) : nextStatusBtn(o, i)}</div>
     </div>`;
 }
 
@@ -1265,6 +1265,17 @@ function shopColor(name) {
 }
 
 // Статус под суммой: шкала пути из 5 делений и короткое слово «что дальше»
+// Кнопка в строке заказа: перевести на следующий этап одним нажатием (то же, что большая кнопка в заказе)
+const NEXT_VERB = { [S.WAIT]: 'Оплатил', [S.PAID]: 'Выкупил', [S.BOUGHT]: 'На складе', [S.STOCK]: 'Отправил', [S.WAY]: 'Пришёл', [S.ARRIVED]: 'Выдал' };
+function nextStatusBtn(o, i) {
+  if (!(i in NEXT_VERB)) return statusTrack(o, i); // выдан или отменён — просто подпись
+  const look = { [S.WAIT]: 'var(--warn)', [S.PAID]: 'var(--btn)', [S.BOUGHT]: '#0EA5E9', [S.STOCK]: '#0EA5E9', [S.WAY]: '#8B5CF6', [S.ARRIVED]: '#16A34A' }[i];
+  const step = { [S.WAIT]: 1, [S.PAID]: 2, [S.BOUGHT]: 3, [S.STOCK]: 3, [S.WAY]: 4, [S.ARRIVED]: 5 }[i];
+  const bars = [1, 2, 3, 4, 5].map(k => `<i${k <= step ? ' class="on"' : ''}></i>`).join('');
+  const days = i === S.WAY ? ` title="В пути ${daysSince(o.statusAt || o.date)} дн"` : '';
+  return `<button class="o14-next" style="--c:${look}" data-act="setStatus" data-no="${o.no}" data-i="${i + 1}"${days} aria-label="Перевести в «${esc(state.statuses[i + 1])}»"><span class="bars">${bars}</span>${NEXT_VERB[i]}${icon('chevron')}</button>`;
+}
+
 function statusTrack(o, i) {
   if (i === S.CANCEL) return '<span class="o14-trk" style="color:var(--hint)">отменён</span>';
   if (i === S.DONE) return `<span class="o14-trk" style="color:var(--ok)">${icon('check')}выдан</span>`;
