@@ -1282,7 +1282,6 @@ function orderRow(o) {
   const shop = o.items && o.items[0] ? site(o.items[0].link) : '';
   const known = shop && shop !== 'Без ссылки';
   const shopName = known ? shop.split('.')[0].replace(/-demo$/, '').replace(/^./, c => c.toUpperCase()) : '';
-  const letter = ((known ? shopName : o.client) || '?').replace(/[^\p{L}\p{N}]/gu, '').charAt(0).toUpperCase() || '?';
   const what = o.count > 1 ? `${o.count} ${o.count < 5 ? 'товара' : 'товаров'}` : (o.items && o.items[0] ? productName(o.items[0].link) : '');
   const sub = `<small>${esc([shopName, what].filter(Boolean).join(' · ') || `№${o.no}`)}</small>`;
   // Плашка цены: серая — оплачено, красная — долг (остаток), жёлтая — ещё не платили
@@ -1293,7 +1292,7 @@ function orderRow(o) {
   return `
     <div class="lrow orow o14-row ${checked ? 'checked' : ''}" data-act="${sel ? 'toggleSel' : 'openOrder'}" data-no="${o.no}" ${sel ? '' : 'data-swipe="1"'}>
       ${sel ? `<span class="check">${checked ? '✓' : ''}</span>`
-        : `<span class="o15-mg">${esc(letter)}</span>`}
+        : `${stageIcon(i)}`}
       <div class="grow o14-m"><b>${esc(o.client)}</b>${sub}</div>
       ${!sel && stageOf(state.filter) >= 0 && i in NEXT_VERB
         ? `${pill}<button class="o15-ok" data-act="setStatus" data-no="${o.no}" data-i="${i + 1}" aria-label="${NEXT_VERB[i]}">${icon('check')}</button>`
@@ -1319,6 +1318,16 @@ function nextStatusBtn(o, i) {
   const bars = [1, 2, 3, 4, 5].map(k => `<i${k <= step ? ' class="on"' : ''}></i>`).join('');
   const days = i === S.WAY ? ` title="В пути ${daysSince(o.statusAt || o.date)} дн"` : '';
   return `<button class="o14-next" style="--c:${look}" data-act="setStatus" data-no="${o.no}" data-i="${i + 1}"${days} aria-label="Перевести в «${esc(state.statuses[i + 1])}»"><span class="bars">${bars}</span>${NEXT_VERB[i]}${icon('chevron')}</button>`;
+}
+
+// Значок этапа слева в строке заказа: что сейчас с заказом
+const STAGE_ICON = {
+  [S.WAIT]: ['cash', '#D97706'], [S.PAID]: ['cart', 'var(--btn)'], [S.BOUGHT]: ['box', '#0EA5E9'], [S.STOCK]: ['box', '#0EA5E9'],
+  [S.WAY]: ['truck', '#8B5CF6'], [S.ARRIVED]: ['gift', '#16A34A'], [S.DONE]: ['check', 'var(--hint)'], [S.CANCEL]: ['box', 'var(--hint)'],
+};
+function stageIcon(i) {
+  const [ic, c] = STAGE_ICON[i] || ['box', 'var(--hint)'];
+  return `<span class="o15-si ${i === S.CANCEL ? 'gone' : ''}" style="--c:${c}">${icon(ic)}</span>`;
 }
 
 // Где заказ сейчас — короткой серой подписью
