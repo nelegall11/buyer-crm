@@ -840,6 +840,13 @@ const ACTIONS = {
   moreClients: () => { state.limit += PAGE; $('#clientList').innerHTML = clientsListHtml(); },
   more: () => { state.limit += PAGE; $('#orderList').innerHTML = orderListHtml(); },
   selectMode: () => { state.selecting = !state.selecting; state.selected = []; render(); },
+  ostage: d => {
+    state.omode = 'work';
+    state.filter = String(state.filter) === String(d.v) ? 'active' : (d.v === 'going' ? 'going' : Number(d.v));
+    state.limit = PAGE;
+    render();
+    haptic('light');
+  },
   ochip: d => { state.omode = 'work'; ACTIONS.filter(d); },
   searchToggle: () => {
     state.searchOpen = !(state.searchOpen || state.query);
@@ -858,6 +865,7 @@ const ACTIONS = {
   },
   setPeriod: d => { state.period14 = d.v; state.limit = PAGE; closeSheet(); },
   ordersMore: () => {
+    if (['debt', S.DONE, S.CANCEL, 'all'].map(String).includes(String(state.filter))) { state.filter = 'active'; state.limit = PAGE; return render(); }
     const f = String(state.filter);
     const row = (v, label) => `<button class="lrow srow ${f === String(v) ? 'cur' : ''}" data-act="moreFilter" data-v="${v}"><span class="grow">${label}</span><span class="hint">${state.orders.filter(o => matchFilter(o, v)).length}</span>${f === String(v) ? icon('check') : ''}</button>`;
     const srt = Object.keys(ORDER_SORTS).map(k => `<button class="${state.sort === k ? 'on' : ''}" data-act="sortPick" data-v="${k}">${ORDER_SORTS[k]}</button>`).join('');
@@ -1104,6 +1112,15 @@ function currentScreen() { return state.stack[state.stack.length - 1]; }
 
 const ORDER_SORTS = { new: 'Новые', debt: 'С долгом', old: 'Дольше ждут' };
 
+// Путь заказа сверху «Заказов»: 4 шага, под каждым — сколько заказов на нём
+const FLOW_STAGES = [
+  { v: S.WAIT, label: 'Оплата', title: 'Ждут оплаты', hint: 'оплатил — заказ уйдёт в «Выкуп»' },
+  { v: S.PAID, label: 'Выкуп', title: 'Выкупить', hint: 'выкупил — заказ уйдёт дальше, в «Едут»' },
+  { v: 'going', label: 'Едут', title: 'Едут', hint: 'следующий шаг: на склад → отправлен → пришёл' },
+  { v: S.ARRIVED, label: 'Выдать', title: 'Выдать', hint: 'выдал — заказ закрыт' },
+];
+function stageOf(f) { return FLOW_STAGES.findIndex(x => String(x.v) === String(f)); }
+
 function ordersTab() {
   if (!state.orders.length) {
     return emptyHtml('📭', 'Заказов пока нет', 'Нажмите «+» внизу, чтобы добавить первый');
@@ -1120,38 +1137,48 @@ function ordersTab() {
         <button class="h14-ib ${searchOpen ? 'on' : ''}" data-act="searchToggle" aria-label="Поиск">${icon('search')}</button>
         <button class="h14-ib" data-act="selectMode" aria-label="Выбрать несколько">${icon('checks')}</button>
       </div>`;
-  const chip = (v, label) => {
-    const n = state.orders.filter(o => matchFilter(o, v)).length;
-    return `<button class="o14-chip ${!all && String(state.filter) === String(v) ? 'on' : ''}" data-act="ochip" data-v="${v}">${label}${n ? `<b>${n}</b>` : ''}</button>`;
-  };
-  const extra = ['debt', S.DONE, S.CANCEL, 'all'].map(String).includes(String(state.filter));
-  const due = attentionItems().filter(x => x.prio === 0).length;
-  const chips = `
-    <div class="o14-chips">
-      ${due && !state.selecting ? `<button class="o14-chip urg" data-act="openAttention">${icon('calendar')}Срочно<b>${due}</b></button>` : ''}
-      ${chip('active', 'В работе')}${chip(S.WAIT, 'Оплата')}${chip(S.PAID, 'Выкуп')}${chip('going', 'Едут')}${chip(S.ARRIVED, 'Выдать')}
-      <button class="o14-chip ${all ? 'on' : ''}" data-act="omode" data-v="all">Все заказы</button>
-      <button class="o14-chip ${!all && extra ? 'on' : ''}" data-act="ordersMore">${!all && extra ? esc(EXTRA_FILTERS[String(state.filter)] || 'Ещё') : 'Ещё'}</button>
-    </div>`;
-  let body = '';
+  const search = searchOpen ? `<div class="search-wrap">${icon('search')}
+      <input id="search" class="input search" type="search" placeholder="Имя, телефон, № или трек" value="${esc(state.query)}" autocomplete="off">
+    </div>` : '';
+
   if (all) {
     const p = periodRange();
     const rows = bizRows().filter(r => { const t = new Date(r.date).getTime(); return t >= p.from && t < p.to; });
-    body = `
+    return `
+      ${head}${search}
+      <div class="o15-bar"><button data-act="omode" data-v="work">${icon('chevron')}В работе</button><span></span></div>
       <div class="o14-per"><button class="o14-pick" data-act="periodSheet">${esc(p.label)}${icon('chevron')}</button><span>${esc(p.range)}</span></div>
       <div class="o14-sum">
         <div><span>Заказов</span><b>${rows.length}</b></div>
         <div><span>Выручка</span><b class="money">${moneyShort(sumBy(rows, 'total'))}</b></div>
         <div><span>Прибыль</span><b class="money ok">${moneyShort(sumBy(rows, 'profit'))}</b></div>
-      </div>`;
+      </div>
+      <div id="orderList">${orderListHtml()}</div>`;
   }
+
+  const cur = stageOf(state.filter);
+  const extra = ['debt', S.DONE, S.CANCEL, 'all'].map(String).includes(String(state.filter));
+  const due = attentionItems().filter(x => x.prio === 0).length;
+  const counts = FLOW_STAGES.map(x => state.orders.filter(o => matchFilter(o, x.v)).length);
+  const flow = `
+    <div class="o15-flow">
+      <div class="o15-line"><i style="width:${cur > 0 ? cur / 3 * 100 : 0}%"></i></div>
+      <div class="o15-st">${FLOW_STAGES.map((x, k) => `
+        <button class="o15-s ${k === cur ? 'on' : ''} ${counts[k] ? 'has' : 'zero'}" data-act="ostage" data-v="${x.v}">
+          <span class="dot"></span><b>${counts[k]}</b><small>${x.label}</small></button>`).join('')}
+      </div>
+    </div>`;
+  const list = filteredOrders();
+  const sum = list.reduce((a, o) => a + (isCancelled(o) ? 0 : o.total), 0);
+  const left = cur >= 0 ? `<b>${FLOW_STAGES[cur].title} · ${list.length}</b>`
+    : extra ? `<b>${esc(EXTRA_FILTERS[String(state.filter)] || 'Заказы')} · ${list.length}</b>`
+    : due && !state.selecting ? `<button class="urg" data-act="openAttention">${icon('calendar')}Срочно ${due}</button>` : '<span></span>';
+  const right = cur >= 0 ? `<span>≈ ${moneyShort(sum)}</span>`
+    : `<span><button data-act="ordersMore">${extra ? 'Сбросить' : 'Ещё'}</button><button data-act="omode" data-v="all">Все заказы →</button></span>`;
   return `
-    ${head}
-    ${searchOpen ? `<div class="search-wrap">${icon('search')}
-      <input id="search" class="input search" type="search" placeholder="Имя, телефон, № или трек" value="${esc(state.query)}" autocomplete="off">
-    </div>` : ''}
-    ${chips}
-    ${body}
+    ${head}${search}
+    ${flow}
+    <div class="o15-bar">${left}${right}</div>
     <div id="orderList">${orderListHtml()}</div>`;
 }
 
@@ -1226,7 +1253,8 @@ function orderListHtml() {
   const shown = list.slice(0, state.limit);
   const rest = list.length - shown.length;
   let body;
-  if (state.sort === 'new') {
+  const stage = stageOf(state.filter);
+  if (state.sort === 'new' && stage < 0) {
     const groups = [];
     shown.forEach(o => {
       const label = dayLabel(o.date);
@@ -1239,6 +1267,7 @@ function orderListHtml() {
   }
   let swipeHint = '';
   try { swipeHint = !state.selecting && 'ontouchstart' in window && !localStorage.getItem('buyercrm-swiped') ? `<p class="hint small center">Смахните заказ вправо — следующий этап, влево — WhatsApp</p>` : ''; } catch (e) { /* нет — не страшно */ }
+  if (stage >= 0 && !state.selecting) body += `<p class="o15-hint">✓ — ${FLOW_STAGES[stage].hint}</p>`;
   return swipeHint + body +
     (rest > 0 ? `<button class="btn" data-act="more">Показать ещё ${Math.min(rest, PAGE)} из ${rest}</button>` : '') +
     archiveHint;
@@ -1260,9 +1289,11 @@ function orderRow(o) {
   return `
     <div class="lrow orow o14-row ${checked ? 'checked' : ''}" data-act="${sel ? 'toggleSel' : 'openOrder'}" data-no="${o.no}" ${sel ? '' : 'data-swipe="1"'}>
       ${sel ? `<span class="check">${checked ? '✓' : ''}</span>`
-        : `<span class="o14-logo"><span class="s" style="background:${shopColor(known ? shop : o.client)}">${esc(letter)}</span></span>`}
+        : `<span class="o15-mg">${esc(letter)}</span>`}
       <div class="grow o14-m"><b>${esc(o.client)}</b>${sub}</div>
-      <div class="o14-r"><b class="money ${cancelled ? 'gone' : ''}">${money(o.total)}</b>${sel ? statusTrack(o, i) : nextStatusBtn(o, i)}</div>
+      ${!sel && stageOf(state.filter) >= 0 && i in NEXT_VERB
+        ? `<b class="o15-pr money">${money(o.total)}</b><button class="o15-ok" data-act="setStatus" data-no="${o.no}" data-i="${i + 1}" aria-label="${NEXT_VERB[i]}">${icon('check')}</button>`
+        : `<div class="o15-r"><b class="money ${cancelled ? 'gone' : ''}">${money(o.total)}</b><small>${esc(stateWord(o, i))}</small></div>`}
     </div>`;
 }
 
@@ -1284,6 +1315,12 @@ function nextStatusBtn(o, i) {
   const bars = [1, 2, 3, 4, 5].map(k => `<i${k <= step ? ' class="on"' : ''}></i>`).join('');
   const days = i === S.WAY ? ` title="В пути ${daysSince(o.statusAt || o.date)} дн"` : '';
   return `<button class="o14-next" style="--c:${look}" data-act="setStatus" data-no="${o.no}" data-i="${i + 1}"${days} aria-label="Перевести в «${esc(state.statuses[i + 1])}»"><span class="bars">${bars}</span>${NEXT_VERB[i]}${icon('chevron')}</button>`;
+}
+
+// Где заказ сейчас — короткой серой подписью
+function stateWord(o, i) {
+  return { [S.WAIT]: 'ждёт оплаты', [S.PAID]: 'выкупить', [S.BOUGHT]: 'на склад', [S.STOCK]: 'на складе',
+    [S.WAY]: `едет · ${daysSince(o.statusAt || o.date)} дн`, [S.ARRIVED]: 'выдать', [S.DONE]: 'выдан', [S.CANCEL]: 'отменён' }[i] || o.status;
 }
 
 function statusTrack(o, i) {
