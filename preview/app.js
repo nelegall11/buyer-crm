@@ -399,6 +399,8 @@ function render() {
   $('#title').textContent = top ? screenTitle(top) : state.tab === 'today' ? greetingTitle() : TAB_TITLES[state.tab];
   $('#backBtn').hidden = !top; // своя кнопка «Назад» видна и в Telegram: его кнопка вверху слишком незаметна
   $('#setBtn').hidden = !!top || state.loading || !!state.error;
+  const more = $('#moreBtn');
+  if (more) more.hidden = !(top && top.type === 'order');
 
   const navTab = state.tab === 'biz' ? 'profile' : state.tab; // «Бизнес» открывается из профиля
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === navTab));
@@ -926,12 +928,35 @@ const ACTIONS = {
   bulkPick: d => askStatus(state.selected.slice(), Number(d.i)),
   trackSave: d => applyStatus(JSON.parse(d.nos), Number(d.i), ($('#trackInput').value || '').trim()),
   trackSkip: d => applyStatus(JSON.parse(d.nos), Number(d.i), ''),
+  trackSheet: d => {
+    const o = findOrder(Number(d.no));
+    if (!o) return;
+    openSheet('track', `<h3>Трек-номер</h3>
+      <input id="trackEdit" class="input mono" value="${esc(o.track)}" placeholder="Вставьте трек-номер" autocomplete="off">
+      <button class="btn primary" data-act="saveTrack" data-no="${o.no}" style="margin-top:12px">Сохранить</button>`);
+    setTimeout(() => { const el = $('#trackEdit'); if (el) el.focus(); }, 50);
+  },
+  orderMenu: () => {
+    const top = currentScreen();
+    const o = top && findOrder(top.no);
+    if (!o) return;
+    const tel = o.phone ? `tel:${o.phone.replace(/[^\d+]/g, '')}` : '';
+    const row = (attrs, ic, label) => `<button class="lrow srow" ${attrs}>${icon(ic)}<span class="grow">${label}</span></button>`;
+    openSheet('orderMenu', `<h3>Заказ №${o.no}</h3><div class="list slist">
+      ${row(`data-act="statusSheet" data-no="${o.no}"`, 'repeat', 'Выбрать другой статус')}
+      ${o.debt > 0 && !isCancelled(o) ? row(`data-act="payment" data-no="${o.no}"`, 'cash', 'Внести оплату') : ''}
+      ${tel ? `<a class="lrow srow" href="${esc(tel)}">${icon('phone')}<span class="grow">Позвонить</span></a>` : ''}
+      ${o.phone ? row(`data-act="open" data-url="${esc(waLink(o.phone, ''))}"`, 'chat', 'Написать без шаблона') : ''}
+      ${row(`data-act="reminderSheet" data-no="${o.no}"`, 'bell', 'Напомнить мне')}
+      ${row(`data-act="openClient" data-key="${esc(clientKey(o))}"`, 'users', 'Открыть клиента')}
+    </div>`);
+  },
   saveTrack: d => {
     const no = Number(d.no);
     const track = ($('#trackEdit').value || '').trim();
     mutate([no], o => { o.track = track; }, 'saveTrack', { no, track });
     toast('Трек-номер сохранён ✅');
-    render();
+    if (state.sheet) closeSheet(); else render();
   },
 
   // Оплата
@@ -2387,6 +2412,8 @@ const SCREENS = {
 
 const FLOW = [S.WAIT, S.PAID, S.BOUGHT, S.STOCK, S.WAY, S.ARRIVED, S.DONE]; // путь заказа без «Отменён»
 
+// Экран заказа: всё главное в одной карточке, редкое — в меню «…» в шапке
+const ORDER_DOTS = [[S.PAID, 'Оплачен'], [S.BOUGHT, 'Выкуп'], [S.STOCK, 'Склад'], [S.WAY, 'Едет'], [S.ARRIVED, 'Прибыл'], [S.DONE, 'Выдан']];
 function orderScreen({ no }) {
   const o = findOrder(no);
   if (!o) return emptyHtml('🤷', 'Заказ не найден');
@@ -2394,73 +2421,65 @@ function orderScreen({ no }) {
   const cancelled = cur === S.CANCEL;
   const next = cur >= 0 && cur < S.DONE ? cur + 1 : null;
   const msg = statusMessage(o);
-  const msgUrl = msg && waLink(o.phone, msg);
-  const chat = waLink(o.phone, '');
+  const chat = waLink(o.phone, msg || '');
   const receiptUrl = waLink(o.phone, receiptText(o));
-  const tel = o.phone ? `tel:${o.phone.replace(/[^\d+]/g, '')}` : '';
-  const stage = cancelled ? 0 : cur + 1;
-  const pct = cancelled ? 0 : stage / FLOW.length;
-  const paidPct = o.total > 0 ? Math.min(100, Math.round(o.paid / o.total * 100)) : 0;
-  const C = 2 * Math.PI * 34;
+  const unpaid = !cancelled && o.paid <= 0 && o.total > 0;
+  const state14 = cancelled ? ['gone', 'отменён'] : unpaid ? ['w', 'не оплачено'] : o.debt > 0 ? ['d', `долг ${moneyNum(o.debt)} ₸`] : ['ok', `${icon('check')}оплачено`];
+  const reached = ORDER_DOTS.filter(([i]) => !cancelled && i <= cur).length;
+  const dots = ORDER_DOTS.map(([i, label]) => {
+    const cls = cancelled ? '' : i <= cur ? 'done' : i === next ? 'cur' : '';
+    return `<div class="od2-s ${cls}"><i></i><small>${label}</small></div>`;
+  }).join('');
+  const lineW = reached > 1 ? (reached - 1) / (ORDER_DOTS.length - 1) * 100 : 0;
+  const notes = [
+    o.delivery > 0 ? `доставка ${money(o.delivery)}` : '', o.discount > 0 ? `скидка ${money(o.discount)}` : '', o.payMethod ? esc(o.payMethod) : '',
+  ].filter(Boolean).join(' · ');
   const acts = [
-    msgUrl || chat ? `<button data-act="open" data-url="${esc(msgUrl || chat)}"><b style="background:#25D366">${icon('chat')}</b>${msgUrl ? 'Сообщить' : 'WhatsApp'}</button>` : '',
-    tel ? `<a href="${esc(tel)}"><b style="background:#2F7BF6">${icon('phone')}</b>Позвонить</a>` : '',
-    receiptUrl ? `<button data-act="open" data-url="${esc(receiptUrl)}"><b style="background:#7C5CF5">${icon('receipt')}</b>Чек</button>` : '',
-    `<button data-act="trackShare" data-no="${o.no}"><b style="background:#0EA5E9">${icon('link')}</b>Ссылка</button>`,
-    `<button data-act="reminderSheet" data-no="${o.no}"><b style="background:#F59E0B">${icon('bell')}</b>Напомнить</button>`,
+    chat ? `<button data-act="open" data-url="${esc(chat)}">${icon('chat')}${msg ? 'Сообщить' : 'Написать'}</button>` : '',
+    receiptUrl ? `<button data-act="open" data-url="${esc(receiptUrl)}" class="rc">${icon('receipt')}Чек</button>` : '',
+    `<button data-act="trackShare" data-no="${o.no}" class="ln">${icon('link')}Ссылка</button>`,
   ].filter(Boolean);
 
   return `
-    <div class="od-hero">
-      <div class="od-ring">
-        <svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="34" fill="none" stroke="var(--sep)" stroke-width="7"/>
-          <circle cx="40" cy="40" r="34" fill="none" stroke="${cancelled ? 'var(--hint)' : 'var(--btn)'}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${(C * pct).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 40 40)"/></svg>
-        <span><em>${cancelled ? '—' : `<b>${stage}</b> / ${FLOW.length}`}</em><small>этап</small></span>
-      </div>
-      <div class="od-st">${cancelled ? 'Заказ <b>отменён</b>' : `Сейчас: <b>${esc(o.status)}</b>${next !== null ? ` · дальше: ${esc(state.statuses[next].toLowerCase())}` : ''}`}</div>
-      <div class="od-amt money">${money(o.total)}</div>
-      <div class="od-sub">${esc(o.client)} · ${o.count} ${o.count === 1 ? 'товар' : o.count < 5 ? 'товара' : 'товаров'} · ${fmtDate(o.date, true)}</div>
-      ${next !== null ? `<button class="btn primary" data-act="setStatus" data-no="${o.no}" data-i="${next}">Перевести в «${esc(state.statuses[next])}»${icon('arrow')}</button>` : ''}
-      <button class="od-other" data-act="statusSheet" data-no="${o.no}">Выбрать другой статус</button>
-    </div>
-    <div class="cc-acts" style="grid-template-columns:repeat(${acts.length},1fr)">${acts.join('')}</div>
-
-    <div class="cc-h">Клиент</div>
-    <div class="cl-g" style="margin-top:0">
-      <div class="cl-r" data-act="openClient" data-key="${esc(clientKey(o))}">
+    <div class="od2-hero">
+      <div class="od2-who" data-act="openClient" data-key="${esc(clientKey(o))}">
         <span class="cl-av" style="${avStyle(o.client)}">${esc(initials(o.client))}</span>
-        <span class="cl-t"><b><span class="ellipsis">${esc(o.client)}</span></b><small>${o.phone ? esc(o.phone) + ' · ' : ''}${o.opt ? 'опт' : 'розница'}</small></span>
+        <span class="cl-t"><b><span class="ellipsis">${esc(o.client)}</span></b><small>${o.phone ? esc(o.phone) + ' · ' : ''}${fmtDate(o.date, true)}${o.opt ? ' · опт' : ''}</small></span>
         <span class="pf-c">${icon('chevron')}</span>
       </div>
-    </div>
-
-    <div class="cc-h">Оплата</div>
-    <div class="od-card">
-      <div class="od-kv"><span>Оплачено</span><b class="money ${o.debt > 0 ? '' : 'ok'}">${money(o.paid)} из ${money(o.total)}</b></div>
-      <div class="od-bar"><i style="width:${paidPct}%"></i></div>
-      ${o.debt > 0 ? `<div class="od-kv"><span>Долг</span><b class="money debt">${money(o.debt)}</b></div>` : ''}
-      <div class="od-kv"><span>Ваша прибыль</span><b class="money">${money(o.profit)}</b></div>
-      ${o.delivery > 0 || o.discount > 0 || o.payMethod ? `<div class="od-note">${[o.delivery > 0 ? `доставка ${money(o.delivery)}` : '', o.discount > 0 ? `скидка ${money(o.discount)}` : '', o.payMethod ? esc(o.payMethod) : ''].filter(Boolean).join(' · ')}</div>` : ''}
+      <div class="od2-amt"><b class="${cancelled ? 'gone' : ''}">${moneyNum(o.total)}<em>₸</em></b><span class="od2-pay ${state14[0]}">${state14[1]}</span></div>
+      <div class="od2-prof">ваша прибыль <b>${money(o.profit)}</b>${notes ? ` · ${notes}` : ''}</div>
       ${o.due && !isClosed(o) ? `<div class="od-note">${icon('calendar')} Нужно к ${esc(new Date(o.due).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }))}</div>` : ''}
       ${o.comment ? `<div class="od-note">${icon('note')} ${esc(o.comment)}</div>` : ''}
-      ${o.debt > 0 && !cancelled ? `<button class="btn primary" data-act="payment" data-no="${o.no}" style="margin-top:12px">${icon('cash')}Внести оплату</button>` : ''}
+      <div class="od2-flow ${cancelled ? 'off' : ''}"><div class="ln"><i style="width:${lineW}%"></i></div><div class="st">${dots}</div></div>
+      ${next !== null && !cancelled ? `<button class="btn primary od2-go" data-act="setStatus" data-no="${o.no}" data-i="${next}">${icon('check')}${NEXT_VERB[cur] || esc(state.statuses[next])}</button>` : ''}
+      ${o.debt > 0 && !cancelled && !unpaid ? `<button class="od-other" data-act="payment" data-no="${o.no}">${icon('cash')} Внести оплату</button>` : ''}
     </div>
+    <div class="od2-acts" style="grid-template-columns:repeat(${acts.length},1fr)">${acts.join('')}</div>
 
-    <div class="cc-h">Товары · ${o.count} шт</div>
+    <div class="cc-h od2-ih"><span>Товары · ${o.count}</span><span>${money(o.items.reduce((a, it) => a + (Number(it.price) || 0), 0))}</span></div>
+    ${o.items.map(it => {
+      const url = isUrl(it.link);
+      const name = productName(it.link);
+      const src = `${fmtNum(it.amount)} ${esc(it.currency)}${it.qty > 1 ? ` × ${it.qty}` : ''}`;
+      return `
+      <div class="od2-item">
+        <b class="nm">${esc(name.charAt(0).toUpperCase() + name.slice(1))}</b><b class="pr money">${money(it.price)}</b>
+        <span class="sh">${url ? esc(site(it.link)) : 'без ссылки'}</span><span class="sr">${src}</span>
+        <div class="row">
+          ${it.size ? `<span class="sz">${esc(it.size)}</span>` : ''}${it.qty > 1 ? `<span class="sz">${it.qty} шт</span>` : ''}
+          <span class="bt ${it.bought ? 'ok' : ''}">${it.bought ? icon('check') + 'выкуплен' : 'не выкуплен'}</span>
+          ${url ? `<button class="lk" data-act="open" data-url="${esc(it.link)}">Открыть${icon('external')}</button>` : ''}
+        </div>
+      </div>`;
+    }).join('')}
+
+    <div class="cc-h">Доставка</div>
     <div class="cl-g" style="margin-top:0">
-      ${o.items.map(it => `
-        <div class="cl-r" ${isUrl(it.link) ? `data-act="open" data-url="${esc(it.link)}"` : ''}>
-          <span class="od-mark ${it.bought ? 'on' : ''}" title="${it.bought ? 'Выкуплен' : 'Не выкуплен'}">${it.bought ? icon('check') : ''}</span>
-          <span class="cl-t"><b><span class="ellipsis">${esc(itemLabel(it))}</span></b><small>${fmtNum(it.amount)} ${it.currency} × ${it.qty} · курс ${fmtNum(it.rate)} · +${fmtNum(it.markup)}%</small></span>
-          <span class="cl-v money">${money(it.price)}</span>
-        </div>`).join('')}
-    </div>
-
-    <div class="cc-h">Трек-номер</div>
-    <div class="od-card">
-      <div class="row">
-        <input id="trackEdit" class="input grow" value="${esc(o.track)}" placeholder="Нет трек-номера" autocomplete="off">
-        <button class="btn small" data-act="saveTrack" data-no="${o.no}">Сохранить</button>
+      <div class="cl-r" data-act="trackSheet" data-no="${o.no}">
+        <span class="pf-i" style="background:#8B5CF6">${icon('truck')}</span>
+        <span class="cl-t">${o.track ? `<b><span class="ellipsis mono">${esc(o.track)}</span></b><small>трек-номер</small>` : '<small style="font-size:15px;margin:0">Трек-номера нет</small>'}</span>
+        <span class="od2-link">${o.track ? 'Изменить' : 'Добавить'}</span>
       </div>
     </div>`;
 }
