@@ -3362,11 +3362,10 @@ function bizTab() {
       <div id="bizChart">${bizChartHtml(cur)}</div>
     </div>
 
-    ${bizNetHtml(prof, from)}
-    ${bizSalaryHtml(rev, prof, from)}
-    ${bizMoneyHtml()}
-    ${bizDebtAgeHtml()}
+    ${bizMoneyHtml(rev, prof, from)}
     ${bizFunnelHtml()}
+    ${bizDebtAgeHtml()}
+    ${bizNetHtml(prof, from)}
     ${bizClientsHtml(rows, cur, from)}
     ${bizShopsHtml(cur)}
     ${bizSpeedHtml(rows, from)}
@@ -3487,29 +3486,30 @@ function saveGoal(value) {
 
 // ---------- 2. Возраст долгов: чем старше долг, тем меньше шанс его получить ----------
 
+// Строка списка в «Бизнесе»: цветной значок, название, подпись, сумма
+function bzRow(color, ic, title, sub, value, attrs = '') {
+  return `<div class="cl-r" ${attrs}><span class="pf-i" style="background:${color}">${icon(ic)}</span>
+    <span class="cl-t"><b><span class="ellipsis">${title}</span></b>${sub ? `<small>${sub}</small>` : ''}</span>${value}</div>`;
+}
+
 function bizDebtAgeHtml() {
   const list = debtOrders();
   if (!list.length) return '';
   const groups = [
-    { label: 'До недели', test: d => d < 7, cls: '' },
-    { label: '1–4 недели', test: d => d >= 7 && d < 30, cls: 'warn' },
-    { label: 'Больше месяца', test: d => d >= 30, cls: 'danger' },
+    { label: 'До недели', test: d => d < 7, color: '#F59E0B' },
+    { label: '1–4 недели', test: d => d >= 7 && d < 30, color: '#F97316' },
+    { label: 'Больше месяца', test: d => d >= 30, color: '#EF4444' },
   ].map(g => {
     const os = list.filter(o => g.test(daysSince(o.date)));
     return { ...g, n: os.length, sum: os.reduce((a, o) => a + o.debt, 0), clients: groupByClient(os).length };
   });
-  const max = Math.max(...groups.map(g => g.sum), 1);
   const old = groups[2];
   return `
-    <div class="section-title">Долги по давности</div>
-    <div class="card hbars">
-      ${groups.map(g => `
-        <div class="hbar" data-act="tabDebts">
-          <div class="row between"><span>${g.label}</span>
-            <span class="small"><b class="money">${money(g.sum)}</b> <span class="hint">· ${ordersWord(g.n)}</span></span></div>
-          <div class="track"><span class="${g.cls}" style="width:${Math.round(g.sum / max * 100)}%"></span></div>
-        </div>`).join('')}
-      ${old.n ? `<button class="btn small" data-act="tabDebts" style="width:100%">${icon('chat')}Напомнить ${old.clients} ${old.clients === 1 ? 'клиенту' : 'клиентам'} с долгом больше месяца</button>` : ''}
+    <div class="cc-h">Долги по давности</div>
+    <div class="cl-g" style="margin-top:0">
+      ${groups.filter(g => g.n).map(g => bzRow(g.color, 'calendar', g.label, `${ordersWord(g.n)} · ${g.clients} ${clientsWord(g.clients)}`,
+        `<span class="cl-v money">${money(g.sum)}</span>`, 'data-act="tabDebts"')).join('')}
+      ${old.n ? `<div class="cl-r bz-add" data-act="tabDebts">${icon('chat')}Напомнить тем, кто должен больше месяца</div>` : ''}
     </div>`;
 }
 
@@ -3522,33 +3522,29 @@ function bizNetHtml(profit, from) {
     .sort((a, b) => new Date(b.date) - new Date(a.date));
   const total = exp.reduce((a, e) => a + e.amount, 0);
   const net = profit - total;
-  const byCat = EXPENSE_CATEGORIES.map(c => ({ c, sum: exp.filter(e => e.category === c).reduce((a, e) => a + e.amount, 0) }))
+  const byCat = EXPENSE_CATEGORIES.map(c => ({ c, list: exp.filter(e => e.category === c) }))
+    .map(x => ({ ...x, sum: x.list.reduce((a, e) => a + e.amount, 0) }))
     .filter(x => x.sum > 0).sort((a, b) => b.sum - a.sum);
-  const max = byCat.length ? byCat[0].sum : 1;
+  const CAT = { 'Доставка': ['#0EA5E9', 'truck'], 'Комиссии': ['#7C5CF5', 'card'], 'Упаковка': ['#F59E0B', 'box'], 'Реклама': ['#EC4899', 'insta'] };
   return `
-    <div class="section-title row between" style="text-transform:none"><span class="up">Чистая прибыль</span>
-      <button class="link-btn" data-act="expenseSheet">${icon('plus')}Расход</button></div>
-    <div class="card">
-      <div class="lines">
-        <div><span>Прибыль с наценки</span><span class="money">${money(profit)}</span></div>
-        <div><span>Расходы</span><span class="money">− ${money(total)}</span></div>
-        <div><span class="big">Чистая прибыль</span><b class="big money ${net >= 0 ? 'ok' : 'debt'}">${money(net)}</b></div>
-      </div>
-      ${byCat.length ? `<div class="hbars" style="margin-top:12px">${byCat.map(x => `
-        <div class="hbar"><div class="row between"><span>${esc(x.c)}</span><span class="small money">${money(x.sum)}</span></div>
-          <div class="track"><span class="muted" style="width:${Math.round(x.sum / max * 100)}%"></span></div></div>`).join('')}</div>`
-        : `<p class="hint small" style="margin:10px 0 0">Добавляйте расходы — доставку форвардера, комиссии, упаковку, рекламу, — и здесь будет видно, сколько вы зарабатываете на самом деле.</p>`}
-      <button class="btn primary" data-act="expenseSheet" style="margin-top:12px">${icon('plus')}Добавить расход</button>
+    <div class="cc-h">Расходы</div>
+    <div class="od-card bz-net">
+      <div class="od-kv"><span>Прибыль с наценки</span><b class="money">${money(profit)}</b></div>
+      <div class="od-kv"><span>Расходы</span><b class="money">− ${money(total)}</b></div>
+      <div class="od-kv bz-tot"><span>Чистая прибыль</span><b class="money ${net >= 0 ? 'ok' : 'debt'}">${money(net)}</b></div>
     </div>
-    ${exp.length ? `<div class="list">${exp.slice(0, 5).map(e => `
-      <div class="lrow">
-        <div class="grow">
-          <div class="l1"><span class="name ellipsis">${esc(e.note || e.category)}</span></div>
-          <div class="l2">${esc(e.category)} · ${fmtDate(e.date)}</div>
-        </div>
-        <b class="money">${money(e.amount)}</b>
-        <button class="icon-btn soft del-btn" data-act="expenseDelete" data-id="${esc(e.id)}" aria-label="Удалить расход">✕</button>
-      </div>`).join('')}</div>` : ''}`;
+    <div class="cl-g">
+      ${byCat.map(x => { const [c, ic] = CAT[x.c] || ['#64748B', 'receipt'];
+        return bzRow(c, ic, esc(x.c), esc(x.list.slice(0, 2).map(e => e.note).filter(Boolean).join(', ') || `${x.list.length} шт`), `<span class="cl-v money">${money(x.sum)}</span>`); }).join('')}
+      ${byCat.length ? '' : `<div class="cl-r"><span class="cl-t"><small style="white-space:normal">Добавляйте расходы — доставку форвардера, комиссии, упаковку, рекламу — и будет видно, сколько вы зарабатываете на самом деле.</small></span></div>`}
+      <div class="cl-r bz-add" data-act="expenseSheet">${icon('plus')}Добавить расход</div>
+    </div>
+    ${exp.length ? `<details class="bz-more"><summary>Последние расходы · ${exp.length}</summary><div class="cl-g">${exp.slice(0, 8).map(e => `
+      <div class="cl-r">
+        <span class="cl-t"><b><span class="ellipsis">${esc(e.note || e.category)}</span></b><small>${esc(e.category)} · ${fmtDate(e.date)}</small></span>
+        <span class="cl-v money">${money(e.amount)}</span>
+        <button class="bz-del" data-act="expenseDelete" data-id="${esc(e.id)}" aria-label="Удалить расход">✕</button>
+      </div>`).join('')}</div></details>` : ''}`;
 }
 
 function openExpenseSheet(category) {
@@ -3587,7 +3583,9 @@ function deleteExpense(id) {
 
 // ---------- «Можно взять себе»: сколько из заработанного — ваши деньги ----------
 
-function bizSalaryHtml(revenue, profit, from) {
+// ---------- Деньги прямо сейчас ----------
+
+function bizMoneyHtml(revenue, profit, from) {
   const expenses = (state.expenses || []).filter(e => new Date(e.date).getTime() >= from).reduce((a, e) => a + e.amount, 0);
   const rate = Number(state.settings.taxRate) || 0;
   const tax = Math.round(revenue * rate / 100);
@@ -3596,37 +3594,23 @@ function bizSalaryHtml(revenue, profit, from) {
   const reserve = state.orders
     .filter(o => statusIdx(o.status) === S.PAID || statusIdx(o.status) === S.WAIT)
     .reduce((a, o) => a + Math.min(o.paid, o.items.filter(x => !x.bought).reduce((s, x) => s + (x.cost || 0), 0)), 0);
-  return `
-    <div class="section-title">Можно взять себе</div>
-    <div class="card salary-card">
-      <div class="lines">
-        <div><span>Чистая прибыль</span><span class="money">${money(profit - expenses)}</span></div>
-        <div><span>Налог ${rate ? `${fmtNum(rate)}% от выручки` : ''}</span>${rate
-          ? `<span class="money">− ${money(tax)}</span>`
-          : `<button class="link-btn" data-act="openSettings" style="padding:0">указать ставку</button>`}</div>
-        <div><span class="big">Ваша зарплата</span><b class="big money ${salary >= 0 ? 'ok' : 'debt'}">${money(Math.max(0, salary))}</b></div>
-      </div>
-      ${reserve > 0 ? `<div class="reserve">${icon('lock')}<span>Не тратьте ещё <b class="money">${money(reserve)}</b> — клиенты уже заплатили, а товары пока не выкуплены</span></div>` : ''}
-      ${salary < 0 ? `<p class="hint small" style="margin:8px 0 0">Расходы и налог больше прибыли за этот период.</p>` : ''}
-    </div>`;
-}
-
-// ---------- Деньги прямо сейчас ----------
-
-function bizMoneyHtml() {
   const active = state.orders.filter(o => !isClosed(o));
-  const debts = debtOrders().reduce((a, o) => a + o.debt, 0);
-  // Вложено в товар: себестоимость уже выкупленных товаров по невыданным заказам
+  const dl = debtOrders();
+  const debts = dl.reduce((a, o) => a + o.debt, 0);
+  const debtClients = groupByClient(dl).length;
   const inGoods = active.reduce((a, o) => a + o.items.filter(x => x.bought).reduce((s, x) => s + (x.cost || 0), 0), 0);
   const profitAhead = active.reduce((a, o) => a + o.profit, 0);
   return `
-    <div class="section-title">Деньги сейчас</div>
-    <div class="card lines">
-      <div data-act="tabDebts"><span>${icon('wallet')} Должны клиенты</span><b class="debt money">${money(debts)}</b></div>
-      <div><span>${icon('cart')} Вложено в товар</span><b class="money">${money(inGoods)}</b></div>
-      <div><span>${icon('truck')} Прибыль в работе</span><b class="ok money">${money(profitAhead)}</b></div>
+    <div class="cc-h">Деньги сейчас</div>
+    <div class="cl-g" style="margin-top:0">
+      ${bzRow('#16A34A', 'wallet', 'Можно взять себе', 'после расходов и налога', `<b class="cl-v bz-big money ${salary >= 0 ? 'ok' : 'debt'}">${money(Math.max(0, salary))}</b>`)}
+      ${reserve > 0 ? bzRow('#2F7BF6', 'lock', 'Не тратьте: предоплаты', 'оплачено, товар ещё не выкуплен', `<span class="cl-v money">${money(reserve)}</span>`) : ''}
+      ${bzRow('#EF4444', 'cash', 'Должны клиенты', debtClients ? `${debtClients} ${clientsWord(debtClients)}` : 'долгов нет', `<span class="cl-v money ${debts ? 'debt' : ''}">${money(debts)}</span>`, 'data-act="tabDebts"')}
+      ${bzRow('#64748B', 'percent', rate ? `Налог ${fmtNum(rate)}%` : 'Налог', rate ? 'отложить к уплате' : 'укажите ставку в настройках', rate ? `<span class="cl-v money">${money(tax)}</span>` : `<span class="pf-c">${icon('chevron')}</span>`, rate ? '' : 'data-act="openSettings" data-sec="money"')}
+      ${bzRow('#F59E0B', 'cart', 'Вложено в товар', 'выкуплено, ещё не выдано', `<span class="cl-v money">${money(inGoods)}</span>`)}
+      ${bzRow('#8B5CF6', 'truck', 'Прибыль в работе', 'получите, когда выдадите', `<span class="cl-v money ok">${money(profitAhead)}</span>`)}
     </div>
-    <p class="hint small" style="margin:6px 4px 0">«Вложено в товар» — сколько вы уже потратили на выкуп по заказам, которые ещё не выданы. «Прибыль в работе» — сколько заработаете, когда их выдадите.</p>`;
+    ${salary < 0 ? `<p class="hint small" style="margin:6px 4px 0">Расходы и налог больше прибыли за этот период.</p>` : ''}`;
 }
 
 // ---------- Воронка: сколько заказов на каждом этапе ----------
@@ -3636,17 +3620,14 @@ function bizFunnelHtml() {
   const data = stages.map(i => {
     const list = state.orders.filter(o => statusIdx(o.status) === i);
     return { i, n: list.length, sum: sumBy(list, 'total') };
-  });
-  const max = Math.max(...data.map(d => d.n), 1);
+  }).filter(d => d.n);
+  if (!data.length) return '';
   return `
-    <div class="section-title">Заказы по этапам</div>
-    <div class="card hbars">
-      ${data.map(d => `
-        <div class="hbar" data-act="tile" data-v="${d.i}">
-          <div class="row between"><span><span class="dot" style="${statusStyle(d.i)}"></span>${esc(state.statuses[d.i])}</span>
-            <span class="hint small">${d.n} · ${moneyShort(d.sum)}</span></div>
-          <div class="track"><span style="width:${Math.round(d.n / max * 100)}%"></span></div>
-        </div>`).join('')}
+    <div class="cc-h">Где деньги в заказах</div>
+    <div class="od-card">
+      <div class="bz-stack">${data.map(d => `<i style="flex:${Math.max(d.sum, 1)};background:${STATUS_COLORS[d.i]}"></i>`).join('')}</div>
+      <div class="bz-leg">${data.map(d => `
+        <button data-act="tile" data-v="${d.i}"><i style="background:${STATUS_COLORS[d.i]}"></i>${esc(state.statuses[d.i])}<span>${d.n}</span><b class="money">${moneyShort(d.sum)}</b></button>`).join('')}</div>
     </div>`;
 }
 
@@ -3675,7 +3656,6 @@ function bizClientsHtml(rows, cur, from) {
   const fresh = all.filter(c => first.get(c.key) >= from).length;
   const back = all.length - fresh;
   const top = all.sort((a, b) => b.total - a.total).slice(0, 5);
-  const topMax = top.length ? top[0].total : 1;
 
   // Давно не заказывали: постоянные (2+ заказа), последний заказ больше 45 дней назад
   const sleeping = [...life.values()]
@@ -3683,31 +3663,26 @@ function bizClientsHtml(rows, cur, from) {
     .sort((a, b) => b.total - a.total).slice(0, 5);
 
   return `
-    <div class="section-title">Клиенты</div>
-    <div class="tiles">
-      <div class="tile neutral kpi"><span class="tile-l">Новые</span><span class="tile-v">${fresh}</span><span class="tile-s">первый заказ в этом периоде</span></div>
-      <div class="tile neutral kpi"><span class="tile-l">Вернулись</span><span class="tile-v">${back}</span><span class="tile-s">${all.length ? Math.round(back / all.length * 100) : 0}% клиентов — постоянные</span></div>
+    <div class="cc-h">Клиенты</div>
+    <div class="bz-k" style="margin-top:0">
+      <div><span>Новые</span><b>${fresh}</b><em>первый заказ в периоде</em></div>
+      <div><span>Вернулись</span><b>${back}</b><em>${all.length ? Math.round(back / all.length * 100) : 0}% — постоянные</em></div>
     </div>
-    ${top.length ? `<div class="card hbars">
-      <div class="hint small" style="margin-bottom:4px">Лучшие клиенты за период</div>
-      ${top.map(c => `
-        <div class="hbar" data-act="openClient" data-key="${esc(c.key)}">
-          <div class="row between"><span class="ellipsis">${esc(c.name)}</span><span class="small"><b class="money">${moneyShort(c.total)}</b> <span class="hint">· ${ordersWord(c.orders)}</span></span></div>
-          <div class="track"><span style="width:${Math.round(c.total / topMax * 100)}%"></span></div>
-        </div>`).join('')}
-    </div>` : ''}
+    ${top.length ? `<div class="cl-g">${top.map(c => `
+      <div class="cl-r" data-act="openClient" data-key="${esc(c.key)}">
+        <span class="cl-av" style="${avStyle(c.name)}">${esc(initials(c.name))}</span>
+        <span class="cl-t"><b><span class="ellipsis">${esc(c.name)}</span></b><small>${ordersWord(c.orders)} за период</small></span>
+        <span class="cl-v money">${moneyShort(c.total)}</span>
+      </div>`).join('')}</div>` : ''}
     ${sleeping.length ? `
-      <div class="section-title">Давно не заказывали</div>
-      <div class="list">${sleeping.map(c => {
+      <div class="cc-h">Давно не заказывали</div>
+      <div class="cl-g" style="margin-top:0">${sleeping.map(c => {
         const url = waLink(c.phone, fillText(state.texts.comeback || 'Здравствуйте, {client}! Давно не виделись 🙂 Если что-то присмотрели — пишите, выкупим.', { client: c.name, no: '', debt: 0, track: '' }));
         return `
-          <div class="lrow">
-            <span class="ava" data-act="openClient" data-key="${esc(c.key)}">${esc(initials(c.name))}</span>
-            <div class="grow" data-act="openClient" data-key="${esc(c.key)}">
-              <div class="l1"><span class="name ellipsis">${esc(c.name)}</span></div>
-              <div class="l2">${ordersWord(c.orders)} на ${moneyShort(c.total)} · последний ${daysWord(Math.floor((Date.now() - c.last) / DAY))} назад</div>
-            </div>
-            ${url ? `<button class="btn small wa" data-act="open" data-url="${esc(url)}">${icon('chat')}Написать</button>` : ''}
+          <div class="cl-r">
+            <span class="cl-av" style="${avStyle(c.name)}" data-act="openClient" data-key="${esc(c.key)}">${esc(initials(c.name))}</span>
+            <span class="cl-t" data-act="openClient" data-key="${esc(c.key)}"><b><span class="ellipsis">${esc(c.name)}</span></b><small>${ordersWord(c.orders)} на ${moneyShort(c.total)} · ${daysWord(Math.floor((Date.now() - c.last) / DAY))} назад</small></span>
+            ${url ? `<button class="rbtn sm wa-ic" data-act="open" data-url="${esc(url)}" aria-label="Написать">${icon('chat')}</button>` : ''}
           </div>`;
       }).join('')}</div>` : ''}`;
 }
@@ -3724,15 +3699,14 @@ function bizShopsHtml(cur) {
   }));
   const top = [...map.values()].sort((a, b) => b.orders - a.orders).slice(0, 5);
   if (!top.length) return '';
-  const max = top[0].orders;
   return `
-    <div class="section-title">Магазины</div>
-    <div class="card hbars">
+    <div class="cc-h">Лучшие магазины</div>
+    <div class="cl-g" style="margin-top:0">
       ${top.map(s => `
-        <div class="hbar">
-          <div class="row between"><span class="ellipsis"><span class="ava sm">${esc(s.name[0].toUpperCase())}</span>${esc(s.name)}</span>
-            <span class="small"><b>${ordersWord(s.orders)}</b> <span class="hint">· ${moneyShort(s.total)}</span></span></div>
-          <div class="track"><span style="width:${Math.round(s.orders / max * 100)}%"></span></div>
+        <div class="cl-r">
+          <span class="nw-logo" style="background:${shopColor(s.name)}">${esc(s.name[0].toUpperCase())}</span>
+          <span class="cl-t"><b><span class="ellipsis">${esc(s.name)}</span></b><small>${ordersWord(s.orders)}</small></span>
+          <span class="cl-v money">${moneyShort(s.total)}</span>
         </div>`).join('')}
     </div>`;
 }
@@ -3746,10 +3720,10 @@ function bizSpeedHtml(rows, from) {
   const t = Object.assign({ way: 25 }, state.settings.attention || {});
   const stuck = state.orders.filter(o => statusIdx(o.status) === S.WAY && daysSince(o.statusAt || o.date) >= t.way).length;
   return `
-    <div class="section-title">Доставка</div>
-    <div class="tiles">
-      <div class="tile neutral kpi"><span class="tile-l">От заказа до выдачи</span><span class="tile-v">${days.length ? daysWord(avg) : '—'}</span><span class="tile-s">в среднем, ${ordersWord(days.length)}</span></div>
-      <button class="tile ${stuck ? 'danger' : 'neutral'} kpi" data-act="tile" data-v="going"><span class="tile-l">Застряли в пути</span><span class="tile-v">${stuck}</span><span class="tile-s">дольше ${daysWord(t.way)}</span></button>
+    <div class="cc-h">Доставка</div>
+    <div class="bz-k" style="margin-top:0">
+      <div><span>От заказа до выдачи</span><b>${days.length ? daysWord(avg) : '—'}</b><em>в среднем, ${ordersWord(days.length)}</em></div>
+      <div data-act="tile" data-v="going" class="${stuck ? 'bad' : ''}"><span>Застряли в пути</span><b>${stuck}</b><em>дольше ${daysWord(t.way)}</em></div>
     </div>`;
 }
 
