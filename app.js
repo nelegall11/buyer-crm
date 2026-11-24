@@ -2165,29 +2165,28 @@ function buyTab() {
   const names = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
   const left = list.filter(x => !x.item.bought);
   const pct = Math.round((list.length - left.length) / list.length * 100);
+  const sumLeft = left.reduce((a, x) => a + (x.item.cost || 0), 0);
 
   return `
-    <div class="tile warn wide">
-      <span class="tile-l">${icon('cart')}Осталось выкупить</span>
-      <span class="tile-v">${left.reduce((a, x) => a + x.item.qty, 0)} шт</span>
-      <div class="progress"><span style="width:${pct}%"></span></div>
-      <span class="tile-s">Отмечайте купленное. Когда отмечен весь заказ, он сам станет «${esc(state.statuses[S.BOUGHT])}».</span>
+    <div class="sc-hero">
+      <small>Осталось выкупить</small>
+      <b>${left.reduce((a, x) => a + x.item.qty, 0)} шт${sumLeft ? ` <span>· ≈ ${moneyShort(sumLeft)}</span>` : ''}</b>
+      <div class="od-bar"><i style="width:${pct}%;background:var(--btn)"></i></div>
+      <p>Отмечайте купленное. Когда отмечен весь заказ, он сам станет «${esc(state.statuses[S.BOUGHT])}».</p>
     </div>
     ${names.map(name => {
       const g = groups[name];
       const qty = g.reduce((a, x) => a + x.item.qty, 0);
+      const done = g.every(x => x.item.bought);
       return `
-        <div class="group-h"><span class="ava">${esc(name[0].toUpperCase())}</span><b class="grow ellipsis">${esc(name)}</b><span class="hint">${qty} шт</span></div>
-        <div class="list">
+        <div class="sc-gh"><span class="nw-logo" style="background:${shopColor(name)}">${esc(name[0].toUpperCase())}</span><b>${esc(name)}</b><span>${done ? 'всё куплено' : qty + ' шт'}</span></div>
+        <div class="cl-g" style="margin-top:0">
           ${g.map(({ order: o, item: it }) => `
-            <div class="buy-item ${it.bought ? 'done' : ''}">
-              <button class="cb" data-act="buyToggle" data-no="${o.no}" data-id="${it.id}" aria-label="Выкуплен">${it.bought ? icon('check') : ''}</button>
-              <div class="grow">
-                <div class="ellipsis">${esc(productName(it.link))}</div>
-                <div><b>${esc(it.size || 'без размера')}</b>${it.qty > 1 ? ` · <b>${it.qty} шт</b>` : ''}</div>
-                <div class="hint small">№${o.no} · ${esc(o.client)}</div>
-              </div>
-              ${isUrl(it.link) ? `<button class="icon-btn soft" data-act="open" data-url="${esc(it.link)}" aria-label="Открыть ссылку">${icon('external')}</button>` : ''}
+            <div class="cl-r sc-buy ${it.bought ? 'done' : ''}">
+              <button class="od-mark ${it.bought ? 'on' : ''}" data-act="buyToggle" data-no="${o.no}" data-id="${it.id}" aria-label="Выкуплен">${it.bought ? icon('check') : ''}</button>
+              <span class="cl-t"><b><span class="ellipsis">${esc(productName(it.link))}</span></b>
+                <small><b class="sc-size">${esc(it.size || 'без размера')}${it.qty > 1 ? ` · ${it.qty} шт` : ''}</b> · №${o.no} · ${esc(o.client)}</small></span>
+              ${isUrl(it.link) ? `<button class="sc-rb" data-act="open" data-url="${esc(it.link)}" aria-label="Открыть ссылку">${icon('external')}</button>` : ''}
             </div>`).join('')}
         </div>`;
     }).join('')}`;
@@ -2203,31 +2202,29 @@ function debtsTab() {
   const list = debtOrders();
   if (!list.length) return emptyHtml('✅', 'Долгов нет', 'Все клиенты рассчитались');
   const sum = list.reduce((a, o) => a + o.debt, 0);
+  const old = list.filter(o => daysSince(o.date) >= 30).length;
   return `
-    <div class="tile danger wide">
-      <span class="tile-l">${icon('wallet')}Клиенты должны</span>
-      <span class="tile-v">${money(sum)}</span>
-      <span class="tile-s">${ordersWord(list.length)} с долгом · сначала самые крупные</span>
+    <div class="sc-hero">
+      <small>Клиенты должны</small>
+      <b class="debt">${money(sum)}</b>
+      <p>${ordersWord(list.length)} с долгом${old ? ` · ${old} дольше месяца` : ''} · сначала самые крупные</p>
     </div>
-    <div class="list">
+    <div class="cl-g">
       ${list.map(o => {
         const remind = waLink(o.phone, fillText(state.texts.remind, o));
+        const d = daysSince(o.date);
         return `
-          <div class="lrow stripe col" style="${statusStyle(statusIdx(o.status))}">
-            <div class="row" data-act="openOrder" data-no="${o.no}">
-              <div class="grow">
-                <div class="l1"><span class="name ellipsis">${esc(o.client)}</span></div>
-                <div class="l2">№${o.no} · <span class="st">${esc(o.status)}</span> · ${daysSince(o.date) >= 30 ? `<span class="debt">${daysWord(daysSince(o.date))}</span>` : daysWord(daysSince(o.date))}</div>
-              </div>
-              <div class="debt money big-debt">${money(o.debt)}</div>
-            </div>
-            <div class="btn-row tight">
-              <button class="btn small" data-act="payment" data-no="${o.no}">${icon('cash')}Оплата</button>
-              ${remind ? `<button class="btn small wa" data-act="open" data-url="${esc(remind)}">${icon('chat')}Напомнить</button>` : ''}
-            </div>
+          <div class="cl-r">
+            <span class="cl-av" style="${avStyle(o.client)}" data-act="openOrder" data-no="${o.no}">${esc(initials(o.client))}</span>
+            <span class="cl-t" data-act="openOrder" data-no="${o.no}"><b><span class="ellipsis">${esc(o.client)}</span></b>
+              <small>№${o.no} · ${esc(o.status.toLowerCase())} · ${d >= 30 ? `<span class="debt">${daysWord(d)}</span>` : daysWord(d)}</small></span>
+            <span class="cl-v debt money">${moneyShort(o.debt)}</span>
+            <button class="sc-rb" data-act="payment" data-no="${o.no}" aria-label="Внести оплату">${icon('cash')}</button>
+            ${remind ? `<button class="sc-rb wa" data-act="open" data-url="${esc(remind)}" aria-label="Напомнить в WhatsApp">${icon('chat')}</button>` : ''}
           </div>`;
       }).join('')}
-    </div>`;
+    </div>
+    <p class="sc-note">${icon('cash')} — отметить оплату · ${icon('chat')} — напомнить в WhatsApp</p>`;
 }
 
 // =====================================================================
@@ -2599,14 +2596,13 @@ function attentionItems() {
 function attentionRow(x) {
   const o = x.o;
   const button = x.url
-    ? `<button class="btn small wa" data-act="attnWrite" data-no="${o.no}" data-url="${esc(x.url)}">${icon('chat')}${x.btn}</button>`
-    : `<button class="btn small" data-act="${x.act}" data-no="${o.no}">${x.btn}</button>`;
+    ? `<button class="sc-pill wa" data-act="attnWrite" data-no="${o.no}" data-url="${esc(x.url)}">${icon('chat')}${x.btn}</button>`
+    : `<button class="sc-pill" data-act="${x.act}" data-no="${o.no}">${x.btn}</button>`;
   return `
-    <div class="lrow stripe" style="${statusStyle(statusIdx(o.status))}">
-      <div class="grow" data-act="openOrder" data-no="${o.no}">
-        <div class="l1"><span class="name ellipsis">${esc(o.client)}</span></div>
-        <div class="l2">№${o.no} · <span class="warn-text">${esc(x.text)}</span></div>
-      </div>
+    <div class="cl-r">
+      <span class="cl-av" style="${avStyle(o.client)}" data-act="openOrder" data-no="${o.no}">${esc(initials(o.client))}</span>
+      <span class="cl-t" data-act="openOrder" data-no="${o.no}"><b><span class="ellipsis">${esc(o.client)}</span></b>
+        <small>№${o.no} · <span class="warn-text">${esc(x.text)}</span></small></span>
       ${button}
     </div>`;
 }
@@ -2615,8 +2611,9 @@ function attentionScreen() {
   const list = attentionItems();
   if (!list.length) return emptyHtml('✅', 'Всё под контролем', 'Застрявших и забытых заказов нет');
   return `
-    <p class="hint" style="margin:4px 4px 10px">После «Напомнить» или «Написать» заказ пропадает отсюда на 2 дня.</p>
-    <div class="list">${list.map(attentionRow).join('')}</div>`;
+    <div class="sc-hero"><small>Требуют внимания</small><b>${ordersWord(list.length)}</b>
+      <p>После «Напомнить» или «Написать» заказ пропадает отсюда на 2 дня.</p></div>
+    <div class="cl-g">${list.map(attentionRow).join('')}</div>`;
 }
 
 // =====================================================================
@@ -2667,48 +2664,43 @@ function parcelScreen(top) {
     const found = parcelOrders(top.track);
     const all = found.every(o => top.sel.includes(o.no));
     return `
-      <div class="card">
-        <div class="hint small">Трек-номер</div>
-        <div class="row between"><b class="mono">${esc(top.track)}</b>
-          <button class="link-btn" data-act="parcelReset">Другая посылка</button></div>
+      <div class="sc-hero">
+        <small>Трек-номер</small>
+        <b class="mono sc-track">${esc(top.track)}</b>
+        <button class="od-other" data-act="parcelReset" style="padding:6px 0 0">Другая посылка</button>
       </div>
-      <div class="section-title">${ordersWord(found.length)} в этой посылке${all ? '' : ` · выбрано ${top.sel.length}`}</div>
-      <div class="list">
+      <div class="cc-h">${ordersWord(found.length)} в посылке${all ? '' : ` · выбрано ${top.sel.length}`}</div>
+      <div class="cl-g" style="margin-top:0">
         ${found.map(o => {
           const on = top.sel.includes(o.no);
           return `
-            <div class="lrow ${on ? 'checked' : ''}" data-act="parcelToggle" data-no="${o.no}">
-              <span class="check">${on ? '✓' : ''}</span>
-              <div class="grow">
-                <div class="l1"><span class="name ellipsis">${esc(o.client)}</span></div>
-                <div class="l2">№${o.no} · ${o.count} шт${o.debt > 0 ? ` · <span class="debt">к доплате ${money(o.debt)}</span>` : ''}</div>
-              </div>
+            <div class="cl-r" data-act="parcelToggle" data-no="${o.no}">
+              <span class="od-mark ${on ? 'on' : ''}">${on ? icon('check') : ''}</span>
+              <span class="cl-t"><b><span class="ellipsis">${esc(o.client)}</span></b>
+                <small>№${o.no} · ${o.count} шт${o.debt > 0 ? ` · <span class="debt">к доплате ${money(o.debt)}</span>` : ''}</small></span>
             </div>`;
         }).join('')}
       </div>
-      <p class="hint" style="margin:0 4px">Снимите галочку, если какого-то заказа не оказалось в посылке.</p>`;
+      <p class="sc-note">Снимите галочку, если какого-то заказа не оказалось в посылке.</p>`;
   }
 
   const parcels = parcelsOnWay();
   return `
-    <div class="card">
-      <label class="hint small" for="parcelInput">Трек-номер посылки</label>
-      <div class="row" style="margin-top:6px">
-        <input id="parcelInput" class="input grow mono" placeholder="Вставьте или введите" autocomplete="off">
-        <button class="btn small primary" data-act="parcelFind">Найти</button>
+    <div class="sc-hero">
+      <label for="parcelInput"><small>Трек-номер посылки</small></label>
+      <div class="sc-find">
+        <input id="parcelInput" class="input mono" placeholder="Вставьте или введите" autocomplete="off">
+        <button class="nw-go-sm" data-act="parcelFind">${icon('search')}Найти</button>
       </div>
     </div>
     ${parcels.length ? `
-      <div class="section-title">Или выберите посылку в пути</div>
-      <div class="list">
+      <div class="cc-h">Или выберите посылку в пути</div>
+      <div class="cl-g" style="margin-top:0">
         ${parcels.map(p => `
-          <div class="lrow" data-act="parcelPick" data-track="${esc(p.track)}">
-            <span class="ava">${icon('truck')}</span>
-            <div class="grow">
-              <div class="l1"><span class="name ellipsis mono">${esc(p.track)}</span></div>
-              <div class="l2">${ordersWord(p.orders.length)} · в пути ${daysWord(p.since)}</div>
-            </div>
-            <span class="hint">${icon('chevron')}</span>
+          <div class="cl-r" data-act="parcelPick" data-track="${esc(p.track)}">
+            <span class="pf-i" style="background:#4F8FCF">${icon('truck')}</span>
+            <span class="cl-t"><b><span class="ellipsis mono">${esc(p.track)}</span></b><small>${ordersWord(p.orders.length)} · в пути ${daysWord(p.since)}</small></span>
+            <span class="pf-c">${icon('chevron')}</span>
           </div>`).join('')}
       </div>` : emptyHtml('📭', 'Посылок в пути нет', 'Здесь появятся заказы со статусом «В пути» и трек-номером')}`;
 }
@@ -2742,17 +2734,18 @@ function handoverSel(top) {
 function handoverListScreen() {
   const clients = groupByClient(state.orders.filter(o => statusIdx(o.status) === S.ARRIVED));
   if (!clients.length) return emptyHtml('📭', 'Выдавать пока нечего', 'Здесь появятся клиенты, у которых заказы прибыли');
+  const due = clients.reduce((a, c) => a + c.debt, 0);
   return `
-    <p class="hint" style="margin:4px 4px 10px">Клиенты, у которых заказы уже прибыли. Нажмите, когда клиент пришёл забирать.</p>
-    <div class="list">
+    <div class="sc-hero"><small>Ждут выдачи</small><b>${clients.length} ${clientsWord(clients.length)}</b>
+      <p>${due > 0 ? `К доплате при выдаче: <b class="debt">${money(due)}</b>. ` : ''}Нажмите на клиента, когда он пришёл забирать.</p></div>
+    <div class="cl-g">
       ${clients.map(c => `
-        <div class="lrow" data-act="openHandover" data-key="${esc(c.key)}">
-          <span class="ava">${esc(initials(c.name))}</span>
-          <div class="grow">
-            <div class="l1"><span class="name ellipsis">${esc(c.name)}</span></div>
-            <div class="l2">${ordersWord(c.orders.length)} · прибыл ${daysWord(Math.max(...c.orders.map(o => daysSince(o.statusAt || o.date))))} назад</div>
-          </div>
-          <div class="rt">${c.debt > 0 ? `<div class="debt money">${money(c.debt)}</div><div class="hint small">к доплате</div>` : '<div class="ok small">оплачено</div>'}</div>
+        <div class="cl-r" data-act="openHandover" data-key="${esc(c.key)}">
+          <span class="cl-av" style="${avStyle(c.name)}">${esc(initials(c.name))}</span>
+          <span class="cl-t"><b><span class="ellipsis">${esc(c.name)}</span></b>
+            <small>${ordersWord(c.orders.length)} · прибыл ${daysWord(Math.max(...c.orders.map(o => daysSince(o.statusAt || o.date))))} назад</small></span>
+          ${c.debt > 0 ? `<span class="cl-v debt money">${moneyShort(c.debt)}</span>` : '<span class="cl-v ok">оплачено</span>'}
+          <span class="pf-c">${icon('chevron')}</span>
         </div>`).join('')}
     </div>`;
 }
@@ -2766,36 +2759,35 @@ function handoverScreen(top) {
   const c = list[0];
 
   return `
-    <div class="card row">
-      <span class="ava big">${esc(initials(c.client))}</span>
-      <div class="grow"><b style="font-size:18px">${esc(c.client)}</b><div class="hint small">${esc(c.phone)}</div></div>
+    <div class="cl-g" style="margin-top:6px">
+      <div class="cl-r" data-act="openClient" data-key="${esc(top.key)}">
+        <span class="cl-av" style="${avStyle(c.client)}">${esc(initials(c.client))}</span>
+        <span class="cl-t"><b><span class="ellipsis">${esc(c.client)}</span></b><small>${esc(c.phone || 'без телефона')}</small></span>
+        <span class="pf-c">${icon('chevron')}</span>
+      </div>
     </div>
-    <div class="section-title">Что выдаём</div>
-    <div class="list">
+    <div class="cc-h">Что выдаём</div>
+    <div class="cl-g" style="margin-top:0">
       ${list.map(o => {
         const on = sel.includes(o.no);
         return `
-          <div class="lrow ${on ? 'checked' : ''}" data-act="hoToggle" data-no="${o.no}">
-            <span class="check">${on ? '✓' : ''}</span>
-            <div class="grow">
-              <div class="l1"><span class="name">№${o.no}</span><span class="hint small">${o.count} шт</span></div>
-              <div class="l2 ellipsis">${esc(o.items.map(itemLabel).join(', '))}</div>
-            </div>
-            <div class="rt">${o.debt > 0 ? `<div class="debt money">${money(o.debt)}</div>` : '<div class="ok small">оплачен</div>'}</div>
+          <div class="cl-r" data-act="hoToggle" data-no="${o.no}">
+            <span class="od-mark ${on ? 'on' : ''}">${on ? icon('check') : ''}</span>
+            <span class="cl-t"><b>№${o.no} · ${o.count} шт</b><small>${esc(o.items.map(itemLabel).join(', '))}</small></span>
+            ${o.debt > 0 ? `<span class="cl-v debt money">${moneyShort(o.debt)}</span>` : '<span class="cl-v ok">оплачен</span>'}
           </div>`;
       }).join('')}
     </div>
     ${due > 0 ? `
-      <div class="tile danger wide">
-        <span class="tile-l">${icon('cash')}К доплате</span>
-        <span class="tile-v">${money(due)}</span>
-        <span class="tile-s">Клиент заплатил при выдаче?</span>
-        <div class="seg" id="hoPaidSeg" style="width:100%;margin-top:8px;background:var(--bg)">
+      <div class="sc-hero sc-due">
+        <small>К доплате</small>
+        <b class="debt">${money(due)}</b>
+        <p>Клиент заплатил при выдаче?</p>
+        <div class="seg" id="hoPaidSeg">
           <button class="${top.paid === true ? 'on' : ''}" data-act="hoPaid" data-v="1">Да, получил</button>
           <button class="${top.paid === false ? 'on' : ''}" data-act="hoPaid" data-v="0">Нет, в долг</button>
         </div>
-      </div>` : `<div class="tile ok wide"><span class="tile-l">${icon('check')}Всё оплачено</span>
-        <span class="tile-s">Можно выдавать</span></div>`}`;
+      </div>` : `<div class="sc-ok">${icon('check')}<span><b>Всё оплачено</b><small>Можно выдавать</small></span></div>`}`;
 }
 
 function applyHandover() {
@@ -3750,10 +3742,11 @@ function calcAnswer() {
 function calcResultHtml() {
   const t = currentScreen();
   const n = calcNumbers();
-  if (!n.price) return `<div class="calc-big hint">Введите цену с сайта</div>`;
+  if (!n.price) return `<small>Цена для клиента</small><b class="hint">0 ₸</b><p>Введите цену с сайта</p>`;
   return `
-    <div class="calc-big money">${money(n.price)}</div>
-    <div class="hint small">${fmtNum(n.amount)} ${t.cur}${t.qty > 1 ? ` × ${t.qty}` : ''} × курс ${fmtNum(n.rate)} + ${fmtNum(n.markup)}% · ваша прибыль <b class="ok">${money(n.profit)}</b></div>`;
+    <small>Цена для клиента</small>
+    <b class="money">${money(n.price)}</b>
+    <p>${fmtNum(n.amount)} ${t.cur}${t.qty > 1 ? ` × ${t.qty}` : ''} × курс ${fmtNum(n.rate)} + ${fmtNum(n.markup)}% · ваша прибыль <b class="ok">${money(n.profit)}</b></p>`;
 }
 
 function calcScreen(t) {
@@ -3779,7 +3772,7 @@ function calcScreen(t) {
         </div></div>
       </div>
     </div>
-    <div class="card calc-result" id="calcResult">${calcResultHtml()}</div>
+    <div class="sc-hero calc14" id="calcResult">${calcResultHtml()}</div>
     <button class="btn wa" data-act="open" data-url="https://wa.me/?text=${encodeURIComponent(calcAnswer())}" id="calcWa">${icon('chat')}Ответить в WhatsApp</button>
     <div class="btn-row">
       <button class="btn small" data-act="calcCopy">${icon('paste')}Скопировать</button>
