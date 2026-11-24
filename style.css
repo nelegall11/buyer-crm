@@ -1602,3 +1602,20 @@ body.overlay .card { border-radius: 16px; box-shadow: var(--shadow14); }
 .cc2-ab span { font-size: 13px; color: var(--hint); width: 100px; flex: none; }
 .cc2-ab b { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; }
 .cc2-ab b.lk { color: var(--btn); font-weight: 600; }
+
+/* ---------- v33: «Клиенты» — тонкий переключатель, строка с последним заказом ---------- */
+.cl4-seg { display: flex; background: var(--soft); border-radius: 12px; padding: 3px; margin-top: 2px; }
+.cl4-seg button { flex: 1; border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--hint); padding: 8px 0; border-radius: 9px; cursor: pointer; white-space: nowrap; }
+.cl4-seg button i { font-style: normal; font-weight: 500; margin-left: 4px; opacity: .75; }
+.cl4-seg button.on { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgba(15,23,42,.12); }
+.cl4-seg button.debt.on i { color: var(--danger); opacity: 1; font-weight: 600; }
+.cl4-gh { font-size: 13px; font-weight: 600; color: var(--hint); margin: 16px 6px 8px; }
+.cl-g.cl4-g { margin-top: 0; border-radius: 18px; }
+.cl4-r { padding: 12px 14px; }
+.cl4-r + .cl4-r::before { left: 66px; }
+.cl-av.cl4-av { width: 40px; height: 40px; font-size: 14px; }
+.cl4-r .cl-t small { display: block; font-size: 12.5px; color: var(--hint); margin-top: 2px; }
+.cl4-v { text-align: right; flex: none; }
+.cl4-v b { display: block; font-size: 15px; font-weight: 700; }
+.cl4-v b.d { color: var(--danger); }
+.cl4-v small { display: block; font-size: 11.5px; color: var(--hint); margin-top: 2px; }

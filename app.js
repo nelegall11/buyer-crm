@@ -4388,7 +4388,7 @@ function clientsTab() {
   const total = all.reduce((a, c) => a + c.total, 0);
   return `
     <div class="h14-hd o14-hd">
-      <div class="grow"><b>Клиенты</b><small>${all.length} ${clientsWord(all.length)} · ${moneyShort(total)} за всё время</small></div>
+      <div class="grow"><b>Клиенты</b><small>${all.length} ${clientsWord(all.length)} · купили на ${moneyShort(total)}${!state.analytics ? ' · загружаю…' : ''}</small></div>
       <button class="h14-ib ${searchOpen ? 'on' : ''}" data-act="csearchToggle" aria-label="Поиск">${icon('search')}</button>
       <button class="h14-ib ${calOpen ? 'on' : ''}" data-act="ccalToggle" aria-label="Календарь">${icon('calendar')}</button>
     </div>
@@ -4400,9 +4400,9 @@ function clientsTab() {
       <button class="${qd && qd.key === 'custom' ? 'on' : ''}" data-act="cdateSheet">${icon('calendar')}${qd && qd.key === 'custom' ? esc(qd.short) : 'Даты'}</button>
       ${qd ? `<button class="x" data-act="cdate" data-v="" aria-label="Сбросить даты">✕</button>` : ''}
     </div>` : ''}
-    <div class="cl3">${CL_GROUPS.map(([v, label]) => {
+    <div class="cl4-seg">${CL_GROUPS.map(([v, label]) => {
       const n = all.filter(c => clientSeg(c, v)).length;
-      return `<button class="${seg === v ? 'on' : ''} ${v}" data-act="cseg" data-v="${v}"><b>${n}</b><small>${label}</small></button>`;
+      return `<button class="${seg === v ? 'on' : ''} ${v}" data-act="cseg" data-v="${v}">${label}<i>${n}</i></button>`;
     }).join('')}</div>
     <div id="clientList">${clientsListHtml()}</div>`;
 }
@@ -4431,10 +4431,7 @@ function clientsListHtml() {
     .filter(c => !dr || (c.last >= dr.from && c.last < dr.to))
     .filter(c => !q || c.name.toLowerCase().includes(q) || (digits.length >= 3 && String(c.phone).replace(/\D/g, '').includes(digits)))
     .sort((a, b) => b.last - a.last);
-  const sum = seg === 'debt' ? list.reduce((a, c) => a + c.debt, 0) : list.reduce((a, c) => a + c.total, 0);
-  const title = { debt: 'Должны', regular: 'Постоянные', all: 'Все клиенты' }[seg];
-  const bar = `<div class="o15-bar"><b>${title}${dr ? ' · ' + esc(dr.label) : ''} · ${list.length}</b><span>${seg === 'debt' ? '' : 'купили на '}${moneyShort(sum)}${!state.analytics ? ' · загружаю…' : ''}</span></div>`;
-  if (!list.length) return bar + emptyHtml('🤷', 'Никого не нашли', q ? 'Попробуйте часть имени или последние 4 цифры телефона' : dr ? 'В эти даты заказов не было' : 'В этой группе пока никого');
+  if (!list.length) return emptyHtml('🤷', 'Никого не нашли', q ? 'Попробуйте часть имени или последние 4 цифры телефона' : dr ? 'В эти даты заказов не было' : 'В этой группе пока никого');
   const shown = list.slice(0, state.limit);
   const rest = list.length - shown.length;
   const groups = [];
@@ -4443,7 +4440,10 @@ function clientsListHtml() {
     if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, list: [] });
     groups[groups.length - 1].list.push(c);
   });
-  return bar + groups.map(g => `<div class="gh o14-gh"><span>${esc(g.label)}</span></div><div class="cl-g" style="margin-top:0">${g.list.map(clientCard).join('')}</div>`).join('') +
+  // Последний заказ каждого клиента — показываем под именем
+  const lastOrder = {};
+  state.orders.forEach(o => { const k = clientKey(o); if (!lastOrder[k] || o.no > lastOrder[k].no) lastOrder[k] = o; });
+  return groups.map(g => `<div class="cl4-gh">${esc(g.label)}</div><div class="cl-g cl4-g">${g.list.map(c => clientCard(c, lastOrder[c.key])).join('')}</div>`).join('') +
     (rest > 0 ? `<button class="btn" data-act="moreClients" style="margin-top:12px">Показать ещё ${Math.min(rest, PAGE)} из ${rest}</button>` : '');
 }
 
@@ -4457,14 +4457,22 @@ function avSoft(name) {
   return `color:${c};background:color-mix(in srgb, ${c} 13%, transparent)`;
 }
 
-function clientCard(c) {
-  const sub = c.isNew ? 'новый клиент' : `${ordersWord(c.count)}${c.active ? ` · ${c.active} в работе` : ''}`;
-  const pill = c.debt > 0 ? `<span class="o15-pill d">−${moneyNum(c.debt)}<em>₸</em></span>` : `<span class="o15-pill">${moneyNum(c.total)}<em>₸</em></span>`;
+function clientCard(c, o) {
+  let sub = c.isNew ? 'новый клиент' : ordersWord(c.count);
+  if (o) {
+    const what = o.count > 1 ? `${o.count} ${o.count < 5 ? 'товара' : 'товаров'}` : (o.items && o.items[0] ? productName(o.items[0].link) : '');
+    const shop = o.items && o.items[0] ? site(o.items[0].link) : '';
+    const shopName = shop && shop !== 'Без ссылки' ? shop.split('.')[0].replace(/-demo$/, '').replace(/^./, ch => ch.toUpperCase()) : '';
+    sub = `№${o.no} · ${[shopName, what].filter(Boolean).join(', ') || 'заказ'}`;
+  }
+  const right = c.debt > 0
+    ? `<b class="d">${moneyNum(c.debt)} ₸</b><small>долг</small>`
+    : `<b>${moneyShort(c.total)}</b><small>${ordersWord(c.count)}</small>`;
   return `
-    <div class="cl-r" data-act="openClient" data-key="${esc(c.key)}">
-      <span class="cl-av" style="${avSoft(c.name)}">${esc(initials(c.name))}</span>
-      <span class="cl-t"><b><span class="ellipsis">${esc(c.name)}</span>${c.vip ? `<span class="cl-star">${icon('star')}</span>` : ''}${c.bday !== null && c.bday <= 7 ? `<span class="cl-cake">${icon('cake')}</span>` : ''}</b><small>${sub}</small></span>
-      ${pill}
+    <div class="cl-r cl4-r" data-act="openClient" data-key="${esc(c.key)}">
+      <span class="cl-av cl4-av" style="${avStyle(c.name)}">${esc(initials(c.name))}</span>
+      <span class="cl-t"><b><span class="ellipsis">${esc(c.name)}</span>${c.vip ? `<span class="cl-star">${icon('star')}</span>` : ''}${c.bday !== null && c.bday <= 7 ? `<span class="cl-cake">${icon('cake')}</span>` : ''}</b><small class="ellipsis">${esc(sub)}</small></span>
+      <span class="cl4-v">${right}</span>
     </div>`;
 }
 
