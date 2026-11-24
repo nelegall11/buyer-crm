@@ -1345,3 +1345,46 @@ body:not(.overlay) .bz-k + .card, .bz-k + .goal-card { margin-top: 8px; }
 #backBtn[hidden] { display: none; }
 #backBtn .ic { width: 22px; height: 22px; }
 .top:has(#backBtn:not([hidden])) h1 { font-size: 24px; }
+
+/* ---------- v22: экраны с главного (Выкупить, Выдать, Посылка, Долги, Внимание, Цена, Настройки) ---------- */
+.sc-hero { background: var(--bg); border-radius: 20px; box-shadow: var(--shadow14); padding: 14px 16px; margin-top: 6px; }
+.sc-hero small { display: block; font-size: 13px; color: var(--hint); }
+.sc-hero > b { display: block; font-size: 28px; font-weight: 700; letter-spacing: -.6px; margin-top: 2px; }
+.sc-hero > b span { font-size: 16px; font-weight: 600; color: var(--hint); letter-spacing: 0; }
+.sc-hero > b.debt, .sc-hero b.debt { color: var(--danger); }
+.sc-hero p { font-size: 13px; color: var(--hint); margin: 6px 0 0; line-height: 1.4; }
+.sc-hero .od-bar { margin: 10px 0 0; }
+.sc-hero .seg { margin-top: 10px; }
+.sc-track { font-size: 20px !important; letter-spacing: 0 !important; word-break: break-all; }
+.sc-find { display: flex; gap: 8px; margin-top: 8px; }
+.sc-find .input { flex: 1; min-width: 0; }
+.sc-find .nw-go-sm { height: auto; min-height: 44px; }
+.sc-gh { display: flex; align-items: center; gap: 10px; margin: 18px 4px 8px; }
+.sc-gh .nw-logo { width: 30px; height: 30px; border-radius: 9px; font-size: 13px; }
+.sc-gh b { flex: 1; min-width: 0; font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-gh span:last-child { font-size: 13px; color: var(--hint); }
+.cl-r > .od-mark { margin: 0 2px; cursor: pointer; padding: 0; background: none; }
+.cl-r > .od-mark.on { background: #16A34A; }
+.sc-buy.done .cl-t b, .sc-buy.done .cl-t small { opacity: .5; }
+.sc-buy.done .cl-t b .ellipsis { text-decoration: line-through; }
+.sc-size { color: var(--text); font-weight: 600; }
+.sc-rb { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--soft); color: var(--text); display: grid; place-items: center; flex: none; padding: 0; }
+.sc-rb .ic { width: 18px; height: 18px; }
+.sc-rb.wa { background: #25D366; color: #fff; }
+.sc-pill { display: inline-flex; align-items: center; gap: 5px; height: 34px; padding: 0 12px; border-radius: 17px; border: 0; background: var(--soft); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; flex: none; }
+.sc-pill.wa { background: #25D366; color: #fff; }
+.sc-pill .ic { width: 15px; height: 15px; }
+.sc-note { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; font-size: 12.5px; color: var(--hint); margin: 8px 4px 0; }
+.sc-note .ic { width: 14px; height: 14px; }
+.sc-ok { display: flex; align-items: center; gap: 12px; background: color-mix(in srgb, #16A34A 12%, var(--bg)); border-radius: 16px; padding: 12px 14px; margin-top: 14px; color: #16A34A; }
+.sc-ok .ic { width: 22px; height: 22px; }
+.sc-ok b { display: block; font-size: 15px; }
+.sc-ok small { display: block; font-size: 12.5px; color: var(--hint); }
+.sc-due { margin-top: 14px; }
+.calc14 { margin-top: 10px; }
+.calc14 > b { font-size: 34px; }
+.cl-r [data-act] { cursor: pointer; }
+/* Настройки и другие экраны поверх вкладок: заголовки разделов как в профиле */
+body.overlay .section-title { font-size: 12.5px; color: var(--hint); text-transform: uppercase; letter-spacing: .4px; font-weight: 500; margin: 18px 4px 6px; }
+body.overlay .card { border-radius: 16px; box-shadow: var(--shadow14); }
+.cl-r.wrap .cl-t small { white-space: normal; line-height: 1.35; }
