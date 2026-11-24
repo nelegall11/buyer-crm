@@ -1339,3 +1339,9 @@ body:not(.overlay) .bz-k + .card, .bz-k + .goal-card { margin-top: 8px; }
 .bz-leg button b { font-weight: 600; min-width: 78px; text-align: right; }
 .bz-k div[data-act] { cursor: pointer; }
 .bz-k div.bad b { color: var(--danger); }
+
+/* ---------- v21: заметная кнопка «Назад» на экранах поверх вкладок ---------- */
+#backBtn { width: 40px; height: 40px; border-radius: 50%; flex: none; background: var(--bg); color: var(--text); box-shadow: var(--shadow14); display: grid; place-items: center; margin-right: 4px; }
+#backBtn[hidden] { display: none; }
+#backBtn .ic { width: 22px; height: 22px; }
+.top:has(#backBtn:not([hidden])) h1 { font-size: 24px; }
