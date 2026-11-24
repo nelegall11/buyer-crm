@@ -3801,10 +3801,15 @@ async function copyText(text) {
 //  «ГДЕ МОЙ ЗАКАЗ?» — ссылка для клиента
 // =====================================================================
 
-// Страница лежит рядом с приложением: .../track.html?api=...&t=КОД (в демо — ?demo=1&t=КОД)
+// Страница лежит рядом с приложением: .../track.html?t=КОД (в демо — ?demo=1&t=КОД).
+// Таблицу основного магазина страница знает сама; для другой добавляем &s=<номер развёртывания>.
+const DEFAULT_SCRIPT = 'AKfycbz8RWm8yVNhrkqIBIh8L2VGk6jkyMNe6pnve3rsAi2iGdYtOfwmAU5uzUZrtJaI6M_oGg';
 function trackUrl(token) {
   const base = location.href.split(/[?#]/)[0].replace(/[^/]*$/, '');
-  return base + 'track.html?' + (DEMO ? 'demo=1' : 'api=' + encodeURIComponent(API_URL)) + '&t=' + token + '&p=' + getLook().palette;
+  if (DEMO) return base + 'track.html?demo=1&t=' + token;
+  const m = API_URL.match(/\/macros\/s\/([^/]+)\/exec/);
+  const extra = !m ? '&api=' + encodeURIComponent(API_URL) : m[1] === DEFAULT_SCRIPT ? '' : '&s=' + m[1];
+  return base + 'track.html?t=' + token + extra;
 }
 
 async function shareTrackLink(no) {

@@ -7,7 +7,7 @@
   <title>Где мой заказ</title>
   <!--
     Страница для клиента: «Где мой заказ?»
-    Открывается по ссылке из чека: track.html?api=<адрес таблицы>&t=<секретный код заказа>
+    Открывается по ссылке из чека: track.html?t=<секретный код заказа> (другая таблица: &s=<номер развёртывания>)
     Показывает только этот заказ — без телефона, без чужих заказов, без данных байера.
   -->
   <style>
@@ -73,7 +73,11 @@
   <script>
     'use strict';
     const P = new URLSearchParams(location.search);
-    const API = P.get('api') || '';
+    // Короткая ссылка: track.html?t=КОД — таблица основного магазина подставляется сама.
+    // Другая таблица: ?s=<номер развёртывания>. Старые ссылки с ?api=... тоже работают.
+    const DEFAULT_SCRIPT = 'AKfycbz8RWm8yVNhrkqIBIh8L2VGk6jkyMNe6pnve3rsAi2iGdYtOfwmAU5uzUZrtJaI6M_oGg';
+    const scriptUrl = id => 'https://script.google.com/macros/s/' + id + '/exec';
+    const API = P.get('api') || scriptUrl(P.get('s') || DEFAULT_SCRIPT);
     const T = P.get('t') || '';
     const DEMO = P.has('demo');
     const app = document.getElementById('app');
