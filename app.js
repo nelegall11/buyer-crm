@@ -644,6 +644,7 @@ const ACTIONS = {
   attnKind: d => { state.attnKind = d.v; render(); },
   bestClients: () => { state.csort = 'total'; state.cseg = 'all'; switchTab('clients'); },
   goSearch: () => {
+    state.searchOpen = true;
     switchTab('orders');
     const el = $('#search');
     if (el) el.focus();
@@ -839,6 +840,13 @@ const ACTIONS = {
   moreClients: () => { state.limit += PAGE; $('#clientList').innerHTML = clientsListHtml(); },
   more: () => { state.limit += PAGE; $('#orderList').innerHTML = orderListHtml(); },
   selectMode: () => { state.selecting = !state.selecting; state.selected = []; render(); },
+  ochip: d => { state.omode = 'work'; ACTIONS.filter(d); },
+  searchToggle: () => {
+    state.searchOpen = !(state.searchOpen || state.query);
+    if (!state.searchOpen) state.query = '';
+    render();
+    if (state.searchOpen) { const el = $('#search'); if (el) el.focus(); }
+  },
   omode: d => { state.omode = d.v === 'all' ? 'all' : 'work'; state.limit = PAGE; render(); },
   periodSheet: () => {
     const cur = state.period14 || 'month';
@@ -1104,27 +1112,29 @@ function ordersTab() {
   const active = state.orders.filter(o => !isClosed(o));
   const visible = filteredOrders().map(o => o.no);
   const allSel = visible.length && visible.every(n => state.selected.includes(n));
+  const searchOpen = state.searchOpen || !!state.query;
   const head = state.selecting
     ? `<div class="o14-sel"><button data-act="selectMode">Отмена</button><b>Выбрано ${state.selected.length}</b><button data-act="selectAll">${allSel ? 'Снять' : 'Все'}</button></div>`
     : `<div class="h14-hd o14-hd">
         <div class="grow"><b>Заказы</b><small>${active.length} в работе · на ${moneyShort(active.reduce((a, o) => a + o.total, 0))}</small></div>
+        <button class="h14-ib ${searchOpen ? 'on' : ''}" data-act="searchToggle" aria-label="Поиск">${icon('search')}</button>
         <button class="h14-ib" data-act="selectMode" aria-label="Выбрать несколько">${icon('checks')}</button>
       </div>`;
   const chip = (v, label) => {
     const n = state.orders.filter(o => matchFilter(o, v)).length;
-    return `<button class="o14-chip ${String(state.filter) === String(v) ? 'on' : ''}" data-act="filter" data-v="${v}">${label}<b>${n}</b></button>`;
+    return `<button class="o14-chip ${!all && String(state.filter) === String(v) ? 'on' : ''}" data-act="ochip" data-v="${v}">${label}${n ? `<b>${n}</b>` : ''}</button>`;
   };
   const extra = ['debt', S.DONE, S.CANCEL, 'all'].map(String).includes(String(state.filter));
   const due = attentionItems().filter(x => x.prio === 0).length;
-  let body;
-  if (!all) {
-    body = `
-      <div class="o14-chips">
-        ${chip('active', 'Все')}${chip(S.WAIT, 'Оплата')}${chip(S.PAID, 'Выкуп')}${chip('going', 'Едут')}${chip(S.ARRIVED, 'Выдать')}
-        <button class="o14-chip ${extra ? 'on' : ''}" data-act="ordersMore">${icon('sort')}${extra ? esc(EXTRA_FILTERS[String(state.filter)] || 'Ещё') : 'Ещё'}</button>
-      </div>
-      ${due && !state.selecting ? `<button class="o14-urg" data-act="openAttention">${icon('calendar')}<span>${due === 1 ? '1 заказ нужен' : `${due} заказа нужны`} к сроку</span>${icon('chevron')}</button>` : ''}`;
-  } else {
+  const chips = `
+    <div class="o14-chips">
+      ${due && !state.selecting ? `<button class="o14-chip urg" data-act="openAttention">${icon('calendar')}Срочно<b>${due}</b></button>` : ''}
+      ${chip('active', 'В работе')}${chip(S.WAIT, 'Оплата')}${chip(S.PAID, 'Выкуп')}${chip('going', 'Едут')}${chip(S.ARRIVED, 'Выдать')}
+      <button class="o14-chip ${all ? 'on' : ''}" data-act="omode" data-v="all">Все заказы</button>
+      <button class="o14-chip ${!all && extra ? 'on' : ''}" data-act="ordersMore">${!all && extra ? esc(EXTRA_FILTERS[String(state.filter)] || 'Ещё') : 'Ещё'}</button>
+    </div>`;
+  let body = '';
+  if (all) {
     const p = periodRange();
     const rows = bizRows().filter(r => { const t = new Date(r.date).getTime(); return t >= p.from && t < p.to; });
     body = `
@@ -1137,10 +1147,10 @@ function ordersTab() {
   }
   return `
     ${head}
-    <div class="search-wrap">${icon('search')}
+    ${searchOpen ? `<div class="search-wrap">${icon('search')}
       <input id="search" class="input search" type="search" placeholder="Имя, телефон, № или трек" value="${esc(state.query)}" autocomplete="off">
-    </div>
-    <div class="o14-mode"><button class="${all ? '' : 'on'}" data-act="omode" data-v="work">В работе · ${active.length}</button><button class="${all ? 'on' : ''}" data-act="omode" data-v="all">Все заказы</button></div>
+    </div>` : ''}
+    ${chips}
     ${body}
     <div id="orderList">${orderListHtml()}</div>`;
 }
@@ -1223,7 +1233,7 @@ function orderListHtml() {
       if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, list: [] });
       groups[groups.length - 1].list.push(o);
     });
-    body = groups.map(g => `<div class="gh o14-gh"><span>${esc(g.label)}</span><b class="money">${money(g.list.reduce((a, o) => a + (isCancelled(o) ? 0 : o.total), 0))}</b></div><div class="list o14-list">${g.list.map(orderRow).join('')}</div>`).join('');
+    body = groups.map(g => `<div class="gh o14-gh"><span>${esc(g.label)}</span></div><div class="list o14-list">${g.list.map(orderRow).join('')}</div>`).join('');
   } else {
     body = `<div class="list o14-list">${shown.map(orderRow).join('')}</div>`;
   }
@@ -1250,7 +1260,7 @@ function orderRow(o) {
   return `
     <div class="lrow orow o14-row ${checked ? 'checked' : ''}" data-act="${sel ? 'toggleSel' : 'openOrder'}" data-no="${o.no}" ${sel ? '' : 'data-swipe="1"'}>
       ${sel ? `<span class="check">${checked ? '✓' : ''}</span>`
-        : `<span class="o14-logo"><span class="s" style="background:${shopColor(known ? shop : o.client)}">${esc(letter)}</span><span class="c">${esc(initials(o.client))}</span></span>`}
+        : `<span class="o14-logo"><span class="s" style="background:${shopColor(known ? shop : o.client)}">${esc(letter)}</span></span>`}
       <div class="grow o14-m"><b>${esc(o.client)}</b>${sub}</div>
       <div class="o14-r"><b class="money ${cancelled ? 'gone' : ''}">${money(o.total)}</b>${sel ? statusTrack(o, i) : nextStatusBtn(o, i)}</div>
     </div>`;

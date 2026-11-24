@@ -1396,3 +1396,11 @@ body.overlay .card { border-radius: 16px; box-shadow: var(--shadow14); }
 .o14-next .bars i.on { background: var(--c); }
 .o14-next .ic { width: 13px; height: 13px; margin-left: -2px; }
 .o14-next:active { transform: scale(.95); }
+
+/* ---------- v24: минималистичные «Заказы» ---------- */
+.h14-ib.on { background: var(--btn); color: var(--btn-text); }
+.o14-hd + .o14-chips, .search-wrap + .o14-chips { margin-top: 12px; }
+.o14-chip.urg { background: color-mix(in srgb, var(--danger) 12%, var(--bg)); color: var(--danger); }
+.o14-chip.urg b { color: var(--danger); }
+.o14-chip.urg .ic { width: 14px; height: 14px; }
+.o14-gh { margin-top: 16px; }
