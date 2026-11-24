@@ -37,7 +37,7 @@ const state = {
   tab: 'today',
   cquery: '',         // поиск во вкладке «Клиенты»
   analytics: null,    // вкладка «Бизнес»: короткие строки по всем заказам, включая архив
-  bizPeriod: 'month', bizMetric: 'total', bizTable: false, bizSel: null,
+  bizPeriod: 'month', bizMetric: 'profit', bizTable: false, bizSel: null,
   stack: [],          // экраны поверх вкладок: заказ, сводка, готовый заказ
   filter: 'active',   // фильтр списка заказов: 'active', 'all' или номер статуса
   query: '',
@@ -724,6 +724,12 @@ const ACTIONS = {
   bizPeriod: d => { state.bizPeriod = d.v; state.bizSel = null; render(); },
   bizMetric: d => { state.bizMetric = d.v; render(); },
   bizBar: d => { state.bizSel = Number(d.i); render(); },
+  bizOpen: d => {
+    state.bizOpen = state.bizOpen === d.v ? null : d.v;
+    render();
+    const el = document.querySelector('.bz-sec.open');
+    if (el) el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  },
   bizTable: () => { state.bizTable = !state.bizTable; render(); },
   bizRetry: () => { state.analyticsError = null; render(); },
   openSettings: d => {
@@ -3481,42 +3487,69 @@ function bizTab() {
   const forecast = m.days.length ? Math.round(m.profit / m.days.length * daysIn) : 0;
   const pDelta = profPrev ? Math.round((prof - profPrev) / profPrev * 100) : null;
 
+  // Главная цифра карточки следует за переключателем графика
+  const metric = state.bizMetric;
+  const bigV = metric === 'orders' ? cur.length : metric === 'total' ? rev : prof;
+  const bigPrev = metric === 'orders' ? prev.length : metric === 'total' ? revPrev : profPrev;
+  const bigD = bigPrev ? Math.round((bigV - bigPrev) / bigPrev * 100) : null;
+  const bigLabel = { profit: 'Прибыль', total: 'Выручка', orders: 'Заказов' }[metric] + ' · ' + P.label.toLowerCase();
+
+  // «Можно взять себе» и сводки для свёрнутых строк
+  const expenses = (state.expenses || []).filter(e => new Date(e.date).getTime() >= from).reduce((a, e) => a + e.amount, 0);
+  const tax = Math.round(rev * (Number(state.settings.taxRate) || 0) / 100);
+  const take = Math.max(0, prof - expenses - tax);
+  const active = state.orders.filter(o => !isClosed(o));
+  const debtSum = debtOrders().reduce((a, o) => a + o.debt, 0);
+  const inGoods = active.reduce((a, o) => a + o.items.filter(x => x.bought).reduce((s, x) => s + (x.cost || 0), 0), 0);
+  const oldDebts = debtOrders().filter(o => daysSince(o.date) >= 30).length;
+  const shopCount = new Map();
+  cur.forEach(r => (r.shops || []).forEach(s => shopCount.set(s, (shopCount.get(s) || 0) + 1)));
+  const topShop = [...shopCount.entries()].sort((x, y) => y[1] - x[1])[0];
+  const open = state.bizOpen;
+  const sec = (key, color, ic, title, sub, value, body) => `
+    <div class="bz-sec ${open === key ? 'open' : ''}">
+      <div class="cl-r" data-act="bizOpen" data-v="${key}"><span class="pf-i" style="background:${color}">${icon(ic)}</span>
+        <span class="cl-t"><b>${title}</b><small>${sub}</small></span>${value ? `<span class="cl-v money">${value}</span>` : ''}<span class="pf-c bz-chev">${icon('chevron')}</span></div>
+      ${open === key ? `<div class="bz-body">${body()}</div>` : ''}
+    </div>`;
+
   return `
     <div class="bz-seg">${Object.keys(BIZ_PERIODS).map(k =>
       `<button class="${k === period ? 'on' : ''}" data-act="bizPeriod" data-v="${k}">${BIZ_PERIODS[k].label}</button>`).join('')}</div>
-    <div class="bz-hero">
-      <small>Прибыль · ${esc(P.label.toLowerCase())}</small>
-      <b class="money">${money(prof)}</b>
-      <span>${pDelta === null ? 'раньше данных нет' : pDelta === 0 ? `= ${esc(P.prev)}` : `<em class="${pDelta > 0 ? 'up' : 'dn'}">${pDelta > 0 ? '↑' : '↓'} ${Math.abs(pDelta)}%</em> ${esc(P.prev)}`}</span>
-      ${forecast > 0 ? `<div class="bz-fc">${icon('chart')}Прогноз прибыли на ${esc(m.monthName)} <b class="money">≈ ${moneyShort(forecast)}</b></div>` : ''}
-    </div>
-    <div class="bz-k">
-      <div><span>Выручка</span><b class="money">${moneyShort(rev)}</b>${d(rev, revPrev)}</div>
-      <div><span>Маржа</span><b>${margin}%</b>${revPrev ? d(margin, marginPrev, ' п.') : '<em>—</em>'}</div>
-      <div><span>Заказов</span><b>${cur.length}</b>${d(cur.length, prev.length, '')}</div>
-      <div><span>Средний чек</span><b class="money">${moneyShort(avg)}</b>${d(avg, avgPrev)}</div>
-      <div><span>Новых клиентов</span><b>${nNew}</b>${d(nNew, nNewPrev, '')}</div>
-      <div><span>Прибыль с заказа</span><b class="money">${moneyShort(cur.length ? prof / cur.length : 0)}</b>${d(cur.length ? prof / cur.length : 0, prev.length ? profPrev / prev.length : 0)}</div>
+
+    <div class="bz-main">
+      <div class="bz-ms">${['profit', 'total', 'orders'].map(k =>
+        `<button class="${k === metric ? 'on' : ''}" data-act="bizMetric" data-v="${k}">${BIZ_METRICS[k]}</button>`).join('')}
+        <button class="bz-tbl" data-act="bizTable">${state.bizTable ? 'График' : 'Таблицей'}</button></div>
+      <small class="bz-lab">${esc(bigLabel)}</small>
+      <div class="bz-big"><b>${metric === 'orders' ? bigV : `${moneyNum(bigV)}<em>₸</em>`}</b>${bigD === null ? '' : `<span class="${bigD > 0 ? 'up' : bigD < 0 ? 'dn' : ''}">${bigD > 0 ? '↑' : bigD < 0 ? '↓' : '='} ${Math.abs(bigD)}%</span>`}</div>
+      <div id="bizChart">${bizChartHtml(cur)}</div>
+      ${forecast > 0 ? `<div class="bz-fc2">Прогноз прибыли на ${esc(m.monthName)} <b class="money">≈ ${moneyShort(forecast)}</b></div>` : ''}
+      <div class="bz-k6">
+        <div><span>Выручка</span><b class="money">${moneyShort(rev)}</b>${d(rev, revPrev)}</div>
+        <div><span>Маржа</span><b>${margin}%</b>${revPrev ? d(margin, marginPrev, ' п.') : '<em>—</em>'}</div>
+        <div><span>Заказов</span><b>${cur.length}</b>${d(cur.length, prev.length, '')}</div>
+        <div><span>Средний чек</span><b class="money">${moneyShort(avg)}</b>${d(avg, avgPrev)}</div>
+        <div><span>Новых клиентов</span><b>${nNew}</b>${d(nNew, nNewPrev, '')}</div>
+        <div><span>С заказа</span><b class="money">${moneyShort(cur.length ? prof / cur.length : 0)}</b>${d(cur.length ? prof / cur.length : 0, prev.length ? profPrev / prev.length : 0)}</div>
+      </div>
     </div>
 
     ${bizGoalHtml(rows)}
 
-    <div class="card chart-card">
-      <div class="row between" style="margin-bottom:8px">
-        <div class="seg seg-sm">${Object.keys(BIZ_METRICS).map(k =>
-          `<button class="${k === state.bizMetric ? 'on' : ''}" data-act="bizMetric" data-v="${k}">${BIZ_METRICS[k]}</button>`).join('')}</div>
-        <button class="link-btn" data-act="bizTable">${state.bizTable ? 'График' : 'Таблицей'}</button>
-      </div>
-      <div id="bizChart">${bizChartHtml(cur)}</div>
-    </div>
+    <button class="bz-take" data-act="bizOpen" data-v="money"><span class="i">${icon('wallet')}</span>
+      <span><small>Можно взять себе · ${esc(P.label.toLowerCase())}</small><b class="money">${money(take)}</b></span><span class="pf-c">${icon('chevron')}</span></button>
 
-    ${bizMoneyHtml(rev, prof, from)}
     ${bizFunnelHtml()}
-    ${bizDebtAgeHtml()}
-    ${bizNetHtml(prof, from)}
-    ${bizClientsHtml(rows, cur, from)}
-    ${bizShopsHtml(cur)}
-    ${bizSpeedHtml(rows, from)}
+
+    <div class="cc-h">Подробнее</div>
+    <div class="bz-secs">
+      ${sec('money', '#2F7BF6', 'cash', 'Деньги сейчас', `должны ${moneyShort(debtSum)} · в товаре ${moneyShort(inGoods)}`, '', () => bizMoneyHtml(rev, prof, from))}
+      ${sec('exp', '#F97316', 'receipt', 'Расходы', `чистая прибыль ${moneyShort(prof - expenses)}`, moneyShort(expenses), () => bizNetHtml(prof, from))}
+      ${sec('debts', '#EF4444', 'calendar', 'Долги по давности', oldDebts ? `${ordersWord(oldDebts)} дольше месяца` : 'долгов дольше месяца нет', '', () => bizDebtAgeHtml() || '<p class="sc-note">Долгов нет 🎉</p>')}
+      ${sec('clients', '#30B05A', 'users', 'Клиенты', `${nNew} новых · лучшие и давно не заказывали`, '', () => bizClientsHtml(rows, cur, from))}
+      ${sec('shops', '#8B5CF6', 'box', 'Магазины и доставка', topShop ? `чаще всего ${esc(topShop[0])}` : 'лучшие магазины и скорость', '', () => bizShopsHtml(cur) + bizSpeedHtml(rows, from))}
+    </div>
     ${DEMO ? `<button class="btn ghost danger" data-act="resetDemo" style="margin-top:20px">Сбросить демо-данные</button>` : ''}`;
 }
 
@@ -3771,8 +3804,7 @@ function bizFunnelHtml() {
   }).filter(d => d.n);
   if (!data.length) return '';
   return `
-    <div class="cc-h">Где деньги в заказах</div>
-    <div class="od-card">
+    <div class="od-card bz-pipe"><div class="bz-pt"><b>Где деньги в заказах</b><span>${moneyShort(data.reduce((a, x) => a + x.sum, 0))}</span></div>
       <div class="bz-stack">${data.map(d => `<i style="flex:${Math.max(d.sum, 1)};background:${STATUS_COLORS[d.i]}"></i>`).join('')}</div>
       <div class="bz-leg">${data.map(d => `
         <button data-act="tile" data-v="${d.i}"><i style="background:${STATUS_COLORS[d.i]}"></i>${esc(state.statuses[d.i])}<span>${d.n}</span><b class="money">${moneyShort(d.sum)}</b></button>`).join('')}</div>

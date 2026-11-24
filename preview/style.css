@@ -1520,3 +1520,45 @@ body.overlay .card { border-radius: 16px; box-shadow: var(--shadow14); }
 .od2-item .bt .ic { width: 12px; height: 12px; stroke-width: 2.6; }
 .od2-item .lk { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 0; color: var(--btn); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
 .od2-item .lk .ic { width: 15px; height: 15px; }
+
+/* ---------- v30: «Бизнес» — всё главное наверху, списки свёрнуты ---------- */
+.bz-main { background: var(--bg); border-radius: 22px; box-shadow: var(--shadow14); padding: 14px 16px 16px; margin-top: 12px; }
+.bz-ms { display: flex; align-items: center; gap: 4px; margin-bottom: 12px; }
+.bz-ms button { border: 0; background: none; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--hint); padding: 5px 10px; border-radius: 8px; }
+.bz-ms button.on { background: color-mix(in srgb, var(--btn) 13%, transparent); color: var(--btn); }
+.bz-ms .bz-tbl { margin-left: auto; color: var(--btn); padding: 5px 0; }
+.bz-lab { display: block; font-size: 13px; color: var(--hint); }
+.bz-big { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
+.bz-big b { font-size: 32px; font-weight: 700; letter-spacing: -1px; font-variant-numeric: tabular-nums; }
+.bz-big b em { font-style: normal; font-size: 19px; color: var(--hint); margin-left: 3px; font-weight: 600; }
+.bz-big span { font-size: 13px; font-weight: 600; color: var(--hint); }
+.bz-big span.up { color: #16A34A; } .bz-big span.dn { color: var(--danger); }
+.bz-main #bizChart { margin-top: 10px; }
+.bz-fc2 { display: inline-flex; gap: 6px; font-size: 12.5px; color: var(--hint); background: var(--soft); border-radius: 10px; padding: 5px 10px; margin-top: 8px; }
+.bz-fc2 b { color: var(--text); font-weight: 600; }
+.bz-k6 { display: grid; grid-template-columns: repeat(3, 1fr); row-gap: 12px; border-top: 1px solid var(--sep); margin-top: 14px; padding-top: 12px; }
+.bz-k6 div { padding-left: 10px; border-left: 1px solid var(--sep); min-width: 0; }
+.bz-k6 div:nth-child(3n+1) { padding-left: 0; border-left: 0; }
+.bz-k6 span { display: block; font-size: 11.5px; color: var(--hint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bz-k6 b { display: block; font-size: 16px; font-weight: 700; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bz-k6 em { display: block; font-style: normal; font-size: 11.5px; font-weight: 600; color: var(--hint); }
+.bz-k6 em.up { color: #16A34A; } .bz-k6 em.dn { color: var(--danger); }
+.bz-main + .goal-card, .bz-main + .card { margin-top: 10px; }
+.bz-take { display: flex; align-items: center; gap: 12px; width: 100%; border: 0; text-align: left; font: inherit; color: #fff; background: linear-gradient(135deg, #16A34A, #0E8A3E); border-radius: 18px; padding: 14px 16px; margin-top: 10px; cursor: pointer; }
+.bz-take .i { width: 38px; height: 38px; border-radius: 12px; background: rgba(255,255,255,.18); display: grid; place-items: center; flex: none; }
+.bz-take .i .ic { width: 20px; height: 20px; }
+.bz-take small { display: block; font-size: 12.5px; opacity: .85; }
+.bz-take b { display: block; font-size: 21px; font-weight: 700; letter-spacing: -.4px; }
+.bz-take > span:nth-child(2) { flex: 1; }
+.bz-take .pf-c { color: #fff; opacity: .8; }
+.bz-pipe { margin-top: 10px; }
+.bz-pt { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.bz-pt b { font-size: 14.5px; font-weight: 600; } .bz-pt span { font-size: 13px; color: var(--hint); }
+.bz-secs { display: flex; flex-direction: column; gap: 8px; }
+.bz-sec { background: var(--bg); border-radius: 16px; box-shadow: var(--shadow14); overflow: hidden; }
+.bz-sec > .cl-r { cursor: pointer; }
+.bz-chev .ic { transition: transform .2s; }
+.bz-sec.open .bz-chev .ic { transform: rotate(90deg); }
+.bz-body { background: var(--bg2); padding: 2px 10px 12px; }
+.bz-body > .cc-h:first-child { display: none; }
+.bz-body .cl-g, .bz-body .od-card, .bz-body .bz-k { margin-top: 8px; }
