@@ -1284,16 +1284,20 @@ function orderRow(o) {
   const shopName = known ? shop.split('.')[0].replace(/-demo$/, '').replace(/^./, c => c.toUpperCase()) : '';
   const letter = ((known ? shopName : o.client) || '?').replace(/[^\p{L}\p{N}]/gu, '').charAt(0).toUpperCase() || '?';
   const what = o.count > 1 ? `${o.count} ${o.count < 5 ? 'товара' : 'товаров'}` : (o.items && o.items[0] ? productName(o.items[0].link) : '');
-  const debt = o.debt > 0 && !cancelled && i !== S.WAIT;
-  const sub = debt ? `<small class="debt">долг ${money(o.debt)}</small>` : `<small>${esc([shopName, what].filter(Boolean).join(' · ') || `№${o.no}`)}</small>`;
+  const sub = `<small>${esc([shopName, what].filter(Boolean).join(' · ') || `№${o.no}`)}</small>`;
+  // Плашка цены: серая — оплачено, красная — долг (остаток), жёлтая — ещё не платили
+  const unpaid = !cancelled && o.paid <= 0 && o.total > 0;
+  const debt = !cancelled && !unpaid && o.debt > 0;
+  const pill = `<span class="o15-pill ${cancelled ? 'gone' : debt ? 'd' : unpaid ? 'w' : ''}">${debt ? '−' + moneyNum(o.debt) : moneyNum(o.total)}<em>₸</em></span>`;
+  const note = debt ? `из ${moneyNum(o.total)} · ${stateWord(o, i)}` : stateWord(o, i);
   return `
     <div class="lrow orow o14-row ${checked ? 'checked' : ''}" data-act="${sel ? 'toggleSel' : 'openOrder'}" data-no="${o.no}" ${sel ? '' : 'data-swipe="1"'}>
       ${sel ? `<span class="check">${checked ? '✓' : ''}</span>`
         : `<span class="o15-mg">${esc(letter)}</span>`}
       <div class="grow o14-m"><b>${esc(o.client)}</b>${sub}</div>
       ${!sel && stageOf(state.filter) >= 0 && i in NEXT_VERB
-        ? `<b class="o15-pr money">${money(o.total)}</b><button class="o15-ok" data-act="setStatus" data-no="${o.no}" data-i="${i + 1}" aria-label="${NEXT_VERB[i]}">${icon('check')}</button>`
-        : `<div class="o15-r"><b class="money ${cancelled ? 'gone' : ''}">${money(o.total)}</b><small>${esc(stateWord(o, i))}</small></div>`}
+        ? `${pill}<button class="o15-ok" data-act="setStatus" data-no="${o.no}" data-i="${i + 1}" aria-label="${NEXT_VERB[i]}">${icon('check')}</button>`
+        : `<div class="o15-r">${pill}<small>${esc(note)}</small></div>`}
     </div>`;
 }
 
@@ -4365,6 +4369,9 @@ function parseNum(t) {
 }
 
 // 12500 → «12 500 ₸»
+// Число с пробелами между тысячами, без «₸» (для плашки цены)
+function moneyNum(n) { return money(n).replace(/\s*₸\s*$/, ''); }
+
 function money(n) {
   const v = Math.round(Number(n) || 0);
   return (v < 0 ? '−' : '') + String(Math.abs(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₸';
