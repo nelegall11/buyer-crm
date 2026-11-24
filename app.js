@@ -400,7 +400,10 @@ function render() {
   $('#backBtn').hidden = !top; // своя кнопка «Назад» видна и в Telegram: его кнопка вверху слишком незаметна
   $('#setBtn').hidden = !!top || state.loading || !!state.error;
   const more = $('#moreBtn');
-  if (more) more.hidden = !(top && top.type === 'order');
+  if (more) {
+    more.hidden = !(top && (top.type === 'order' || top.type === 'client'));
+    more.dataset.act = top && top.type === 'client' ? 'clientMenu' : 'orderMenu';
+  }
 
   const navTab = state.tab === 'biz' ? 'profile' : state.tab; // «Бизнес» открывается из профиля
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === navTab));
@@ -845,6 +848,21 @@ const ACTIONS = {
   hoPaid: d => { currentScreen().paid = d.v === '1'; render(); },
 
   mode: d => { state.mode = d.v; state.limit = PAGE; state.selecting = false; state.selected = []; render(); },
+  csearchToggle: () => {
+    state.csearchOpen = !(state.csearchOpen || state.cquery);
+    if (!state.csearchOpen) state.cquery = '';
+    state.limit = PAGE;
+    render();
+    if (state.csearchOpen) { const el = $('#csearch'); if (el) el.focus(); }
+  },
+  ccalToggle: () => {
+    state.ccalOpen = !(state.ccalOpen || state.cdate);
+    if (!state.ccalOpen) state.cdate = null;
+    state.limit = PAGE;
+    render();
+  },
+  cdate: d => { state.cdate = d.v && !(state.cdate && state.cdate.key === d.v) ? qdateRange(d.v) : null; state.limit = PAGE; render(); },
+  cdateSheet: () => ACTIONS.qdateSheet({ target: 'cdate' }),
   moreClients: () => { state.limit += PAGE; $('#clientList').innerHTML = clientsListHtml(); },
   more: () => { state.limit += PAGE; $('#orderList').innerHTML = orderListHtml(); },
   selectMode: () => { state.selecting = !state.selecting; state.selected = []; render(); },
@@ -857,9 +875,11 @@ const ACTIONS = {
   },
   ochip: d => { state.omode = 'work'; ACTIONS.filter(d); },
   qdate: d => { state.qdate = d.v && !(state.qdate && state.qdate.key === d.v) ? qdateRange(d.v) : null; state.limit = PAGE; render(); },
-  qdateSheet: () => {
+  qdateSheet: d => {
+    state.qdateTarget = (d && d.target) || null;
     const v = t => new Date(t).toISOString().slice(0, 10);
-    const q = state.qdate && state.qdate.key === 'custom' ? state.qdate : qdateRange('month');
+    const cur = state.qdateTarget === 'cdate' ? state.cdate : state.qdate;
+    const q = cur && cur.key === 'custom' ? cur : qdateRange('month');
     openSheet('qdate', `<h3>Заказы за даты</h3>
       <div class="fields-row">
         <div class="field"><label for="qFrom">С</label><input id="qFrom" class="input" type="date" value="${v(q.from + 12 * 3600000)}"></div>
@@ -873,7 +893,9 @@ const ACTIONS = {
     let from = new Date(a + 'T00:00').getTime(), to = new Date(b + 'T00:00').getTime() + DAY;
     if (to <= from) [from, to] = [to - DAY, from + DAY];
     const short = shortDate(from) === shortDate(to - DAY) ? shortDate(from) : `${shortDate(from)} – ${shortDate(to - DAY)}`;
-    state.qdate = { key: 'custom', from, to, short, label: short };
+    const q = { key: 'custom', from, to, short, label: short };
+    if (state.qdateTarget === 'cdate') state.cdate = q; else state.qdate = q;
+    state.qdateTarget = null;
     state.limit = PAGE;
     closeSheet();
   },
@@ -941,6 +963,20 @@ const ACTIONS = {
       <input id="trackEdit" class="input mono" value="${esc(o.track)}" placeholder="Вставьте трек-номер" autocomplete="off">
       <button class="btn primary" data-act="saveTrack" data-no="${o.no}" style="margin-top:12px">Сохранить</button>`);
     setTimeout(() => { const el = $('#trackEdit'); if (el) el.focus(); }, 50);
+  },
+  clientMenu: () => {
+    const top = currentScreen();
+    if (!top || top.type !== 'client') return;
+    const os = state.orders.filter(o => clientKey(o) === top.key);
+    if (!os.length) return;
+    const c = groupByClient(os)[0];
+    const insta = (os.find(o => o.instagram) || {}).instagram || '';
+    const row = (attrs, ic, label) => `<button class="lrow srow" ${attrs}>${icon(ic)}<span class="grow">${label}</span></button>`;
+    openSheet('clientMenu', `<h3>${esc(c.name)}</h3><div class="list slist">
+      ${insta ? row(`data-act="open" data-url="https://ig.me/m/${esc(insta)}"`, 'insta', 'Написать в Instagram') : ''}
+      ${row(`data-act="reminderSheet" data-key="${esc(top.key)}" data-name="${esc(c.name)}"`, 'bell', 'Напомнить мне')}
+      ${row(`data-act="noteSheet" data-key="${esc(top.key)}" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}"`, 'note', 'Заметка и день рождения')}
+    </div>`);
   },
   orderMenu: () => {
     const top = currentScreen();
@@ -1371,7 +1407,7 @@ function orderListHtml() {
 }
 
 // Строка заказа в списке: две короткие строки вместо большой карточки
-function orderRow(o) {
+function orderRow(o, inClient) {
   const sel = state.selecting;
   const checked = state.selected.includes(o.no);
   const i = statusIdx(o.status);
@@ -1390,7 +1426,7 @@ function orderRow(o) {
     <div class="lrow orow o14-row ${checked ? 'checked' : ''}" data-act="${sel ? 'toggleSel' : 'openOrder'}" data-no="${o.no}" ${sel ? '' : 'data-swipe="1"'}>
       ${sel ? `<span class="check">${checked ? '✓' : ''}</span>`
         : `${stageIcon(i)}`}
-      <div class="grow o14-m"><b>${esc(o.client)}</b>${sub}</div>
+      <div class="grow o14-m"><b>${inClient ? `Заказ №${o.no}` : esc(o.client)}</b>${sub}</div>
       ${!sel && stageOf(state.filter) >= 0 && i in NEXT_VERB
         ? `${pill}<button class="o15-ok" data-act="setStatus" data-no="${o.no}" data-i="${i + 1}" aria-label="${NEXT_VERB[i]}">${icon('check')}</button>`
         : `<div class="o15-r">${pill}<small>${esc(note)}</small></div>`}
@@ -1574,40 +1610,39 @@ function clientScreen({ key }) {
   const note = noteOf(key);
   const bd = note.birthday ? birthdayIn(note.birthday) : null;
   const acts = [
-    chat ? `<button data-act="open" data-url="${esc(chat)}"><b style="background:#25D366">${icon('chat')}</b>WhatsApp</button>` : '',
-    tel ? `<a href="${esc(tel)}"><b style="background:#2F7BF6">${icon('phone')}</b>Позвонить</a>` : '',
-    insta ? `<button data-act="open" data-url="https://ig.me/m/${esc(insta)}"><b style="background:linear-gradient(135deg,#F59E0B,#EC4899,#8B5CF6)">${icon('insta')}</b>Instagram</button>` : '',
-    `<button data-act="reminderSheet" data-key="${esc(key)}" data-name="${esc(c.name)}"><b style="background:#F59E0B">${icon('bell')}</b>Напомнить</button>`,
-    `<button data-act="newForClient" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}"><b style="background:var(--btn)">${icon('plus')}</b>Заказ</button>`,
+    chat ? `<button data-act="open" data-url="${esc(chat)}">${icon('chat')}Написать</button>` : '',
+    tel ? `<a href="${esc(tel)}" class="tl">${icon('phone')}Позвонить</a>` : '',
+    `<button class="p" data-act="newForClient" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}">${icon('plus')}Заказ</button>`,
   ].filter(Boolean);
   const noteAttrs = `data-act="noteSheet" data-key="${esc(key)}" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}"`;
-  const chev = `<span class="pf-c">${icon('chevron')}</span>`;
   const likeText = [...likes.shops, ...likes.sizes].join(' · ');
+  const tag = st.vip ? '<span class="t-acc">★ Постоянный</span>' : st.count >= 3 ? '<span class="t-acc">Постоянный</span>' : st.count <= 1 ? '<span class="t-soft">Новый клиент</span>' : '';
   return `
-    <div class="cc-head">
-      <span class="cc-av" style="${avStyle(c.name)}">${esc(initials(c.name))}</span>
-      <b>${esc(c.name)}</b>
-      <small>${esc(c.phone || (insta ? '' : 'без телефона'))}${insta ? `${c.phone ? ' · ' : ''}@${esc(insta)}` : ''}</small>
-      <div class="cc-tags">
-        ${st.vip ? '<span class="t-acc">★ Постоянный</span>' : st.count >= 3 ? '<span class="t-acc">Постоянный</span>' : st.count <= 1 ? '<span class="t-soft">Новый клиент</span>' : ''}
-        ${st.debt > 0 ? `<span class="t-bad">Долг ${money(st.debt)}</span>` : '<span class="t-ok">Всё оплачено</span>'}
+    <div class="cc2-hero">
+      <div class="cc2-who">
+        <span class="cl-av" style="${avSoft(c.name)}">${esc(initials(c.name))}</span>
+        <span class="cl-t"><b><span class="ellipsis">${esc(c.name)}</span></b><small>${esc(c.phone || (insta ? '' : 'без телефона'))}${insta ? `${c.phone ? ' · ' : ''}@${esc(insta)}` : ''}</small></span>
       </div>
+      <div class="cc-tags cc2-tags">${tag}${st.debt > 0 ? `<span class="t-bad">Долг ${money(st.debt)}</span>` : '<span class="t-ok">Всё оплачено</span>'}</div>
+      <div class="cc2-k3">
+        <div><span>Заказов</span><b>${st.count}</b></div>
+        <div><span>Купил(а) на</span><b class="money">${moneyShort(st.total)}</b></div>
+        <div><span>Прибыль</span><b class="money ok">${moneyShort(st.profit)}</b></div>
+      </div>
+      <div class="cc2-acts" style="grid-template-columns:repeat(${acts.length},1fr)">${acts.join('')}</div>
+      ${arrived ? `<button class="btn primary" data-act="openHandover" data-key="${esc(key)}" style="margin-top:10px">${icon('gift')}Выдать прибывшее (${arrived})</button>` : ''}
     </div>
-    <div class="cc-acts" style="grid-template-columns:repeat(${acts.length},1fr)">${acts.join('')}</div>
-    ${arrived ? `<button class="btn primary" data-act="openHandover" data-key="${esc(key)}" style="margin-top:14px">${icon('gift')}Выдать прибывшее (${arrived})</button>` : ''}
-    <div class="cc-stats">
-      <div><span>Заказов</span><b>${st.count}</b></div>
-      <div><span>Купил(а) на</span><b class="money">${moneyShort(st.total)}</b></div>
-      <div><span>Ваша прибыль</span><b class="money ok">${moneyShort(st.profit)}</b></div>
+
+    <div class="cc-h">О клиенте</div>
+    <div class="cl-g cc2-about" style="margin-top:0">
+      <div class="cc2-ab"><span>Заказывает</span><b>${rhythm ? esc(rhythm.text) : 'пока 1 раз'}${nextText ? ` · ${esc(nextText)}` : ''}</b></div>
+      ${likeText ? `<div class="cc2-ab"><span>Любит</span><b>${esc(likeText)}</b></div>` : ''}
+      <div class="cc2-ab" ${noteAttrs}><span>Заметка</span>${note.note ? `<b>${esc(note.note)}</b>` : '<b class="lk">Добавить</b>'}</div>
+      <div class="cc2-ab" ${noteAttrs}><span>День рождения</span>${note.birthday ? `<b>${esc(note.birthday)}${bd === 0 ? ' — сегодня!' : bd !== null && bd <= 7 ? ` — через ${daysWord(bd)}` : ''}</b>` : '<b class="lk">Указать</b>'}</div>
+      ${isFinite(st.first) ? `<div class="cc2-ab"><span>Клиент с</span><b>${fmtDate(new Date(st.first).toISOString(), true)}</b></div>` : ''}
     </div>
-    <div class="cl-g">
-      <div class="cl-r"><span class="pf-i" style="background:#8B5CF6">${icon('repeat')}</span><span class="cl-t"><b>Заказывает ${rhythm ? esc(rhythm.text) : 'пока 1 раз'}</b><small>${esc(nextText) || (isFinite(st.first) ? `клиент с ${fmtDate(new Date(st.first).toISOString(), true)}` : '')}</small></span></div>
-      ${likeText ? `<div class="cl-r"><span class="pf-i" style="background:#F59E0B">${icon('star')}</span><span class="cl-t"><b>Что любит</b><small>${esc(likeText)}</small></span></div>` : ''}
-      <div class="cl-r" ${noteAttrs}><span class="pf-i" style="background:#0EA5E9">${icon('note')}</span><span class="cl-t"><b>Заметки</b><small>${note.note ? esc(note.note) : 'Размеры, любимые бренды — чтобы не спрашивать'}</small></span>${chev}</div>
-      <div class="cl-r" ${noteAttrs}><span class="pf-i" style="background:#EC4899">${icon('cake')}</span><span class="cl-t"><b>День рождения</b><small>${note.birthday ? esc(note.birthday) + (bd === 0 ? ' — сегодня!' : bd !== null && bd <= 7 ? ` — через ${daysWord(bd)}` : '') : 'Не указан'}</small></span>${chev}</div>
-    </div>
-    ${active.length ? `<div class="cc-h">В работе · ${active.length}</div><div class="list o14-list">${active.map(orderRow).join('')}</div>` : ''}
-    ${closed.length ? `<div class="cc-h">Завершённые · ${closed.length}</div><div class="list o14-list">${closed.map(orderRow).join('')}</div>` : ''}`;
+    ${active.length ? `<div class="cc-h">В работе · ${active.length}</div><div class="list o14-list">${active.map(o => orderRow(o, true)).join('')}</div>` : ''}
+    ${closed.length ? `<div class="cc-h">Завершённые · ${closed.length}</div><div class="list o14-list">${closed.map(o => orderRow(o, true)).join('')}</div>` : ''}`;
 }
 
 // Поиск по старым заказам на сервере (с паузой, чтобы не искать на каждую букву)
@@ -4341,22 +4376,34 @@ function clientSeg(c, seg) {
   return true;
 }
 
+// Три группы наверху «Клиентов»
+const CL_GROUPS = [['debt', 'Должны'], ['regular', 'Постоянные'], ['all', 'Все']];
 function clientsTab() {
   if (!state.analytics && !state.analyticsError) loadAnalytics(); // с архивом цифры по клиентам точнее
   const all = clientStats();
-  const debtors = all.filter(c => c.debt > 0).length;
-  const chips = CLIENT_SEGS.map(([v, label]) => {
-    const n = all.filter(c => clientSeg(c, v)).length;
-    return n || state.cseg === v ? `<button class="o14-chip ${state.cseg === v ? 'on' : ''}" data-act="cseg" data-v="${v}">${label}${v === 'all' ? '' : `<b>${n}</b>`}</button>` : '';
-  }).join('');
+  const seg = CL_GROUPS.some(g => g[0] === state.cseg) ? state.cseg : 'all';
+  const searchOpen = state.csearchOpen || !!state.cquery;
+  const calOpen = state.ccalOpen || !!state.cdate;
+  const qd = state.cdate;
+  const total = all.reduce((a, c) => a + c.total, 0);
   return `
     <div class="h14-hd o14-hd">
-      <div class="grow"><b>Клиенты</b><small>${all.length} ${clientsWord(all.length)}${debtors ? ` · ${debtors} ${debtors === 1 ? 'должен' : 'должны'}` : ''}</small></div>
+      <div class="grow"><b>Клиенты</b><small>${all.length} ${clientsWord(all.length)} · ${moneyShort(total)} за всё время</small></div>
+      <button class="h14-ib ${searchOpen ? 'on' : ''}" data-act="csearchToggle" aria-label="Поиск">${icon('search')}</button>
+      <button class="h14-ib ${calOpen ? 'on' : ''}" data-act="ccalToggle" aria-label="Календарь">${icon('calendar')}</button>
     </div>
-    <div class="search-wrap">${icon('search')}
+    ${searchOpen ? `<div class="search-wrap">${icon('search')}
       <input id="csearch" class="input search" type="search" placeholder="Имя или телефон" value="${esc(state.cquery)}" autocomplete="off">
-    </div>
-    <div class="o14-chips">${chips}</div>
+    </div>` : ''}
+    ${calOpen ? `<div class="o15-dates">
+      ${Object.keys(QDATES).map(k => `<button class="${qd && qd.key === k ? 'on' : ''}" data-act="cdate" data-v="${k}">${QDATES[k]}</button>`).join('')}
+      <button class="${qd && qd.key === 'custom' ? 'on' : ''}" data-act="cdateSheet">${icon('calendar')}${qd && qd.key === 'custom' ? esc(qd.short) : 'Даты'}</button>
+      ${qd ? `<button class="x" data-act="cdate" data-v="" aria-label="Сбросить даты">✕</button>` : ''}
+    </div>` : ''}
+    <div class="cl3">${CL_GROUPS.map(([v, label]) => {
+      const n = all.filter(c => clientSeg(c, v)).length;
+      return `<button class="${seg === v ? 'on' : ''} ${v}" data-act="cseg" data-v="${v}"><b>${n}</b><small>${label}</small></button>`;
+    }).join('')}</div>
     <div id="clientList">${clientsListHtml()}</div>`;
 }
 
@@ -4376,40 +4423,48 @@ function avStyle(name) {
 function clientsListHtml() {
   const q = state.cquery.trim().toLowerCase();
   const digits = q.replace(/\D/g, '');
-  const sorters = {
-    recent: (a, b) => b.last - a.last,
-    total: (a, b) => b.total - a.total,
-    debt: (a, b) => b.debt - a.debt || b.last - a.last,
-  };
+  const seg = CL_GROUPS.some(g => g[0] === state.cseg) ? state.cseg : 'all';
+  const dr = state.cdate;
+  // По дате последнего заказа — свежие сверху
   const list = clientStats()
-    .filter(c => clientSeg(c, state.cseg))
+    .filter(c => clientSeg(c, seg))
+    .filter(c => !dr || (c.last >= dr.from && c.last < dr.to))
     .filter(c => !q || c.name.toLowerCase().includes(q) || (digits.length >= 3 && String(c.phone).replace(/\D/g, '').includes(digits)))
-    .sort(sorters[state.csort] || sorters.recent);
-  if (!list.length) return emptyHtml('🤷', 'Никого не нашли', q ? 'Попробуйте часть имени или последние 4 цифры телефона' : 'В этой группе пока никого');
+    .sort((a, b) => b.last - a.last);
+  const sum = seg === 'debt' ? list.reduce((a, c) => a + c.debt, 0) : list.reduce((a, c) => a + c.total, 0);
+  const title = { debt: 'Должны', regular: 'Постоянные', all: 'Все клиенты' }[seg];
+  const bar = `<div class="o15-bar"><b>${title}${dr ? ' · ' + esc(dr.label) : ''} · ${list.length}</b><span>${seg === 'debt' ? '' : 'купили на '}${moneyShort(sum)}${!state.analytics ? ' · загружаю…' : ''}</span></div>`;
+  if (!list.length) return bar + emptyHtml('🤷', 'Никого не нашли', q ? 'Попробуйте часть имени или последние 4 цифры телефона' : dr ? 'В эти даты заказов не было' : 'В этой группе пока никого');
   const shown = list.slice(0, state.limit);
   const rest = list.length - shown.length;
-  return `<div class="cl-bar"><span>${list.length} ${clientsWord(list.length)}${state.cseg === 'lost' ? ' — напишите им, чтобы вернуть' : ''}${!state.analytics ? ' · загружаю историю…' : ''}</span><button data-act="csort">${icon('sort')}${CLIENT_SORTS[state.csort]}</button></div>
-    <div class="cl-g">${shown.map(clientCard).join('')}</div>` +
-    (rest > 0 ? `<button class="btn" data-act="moreClients">Показать ещё ${Math.min(rest, PAGE)} из ${rest}</button>` : '');
+  const groups = [];
+  shown.forEach(c => {
+    const label = dayLabel(c.last);
+    if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, list: [] });
+    groups[groups.length - 1].list.push(c);
+  });
+  return bar + groups.map(g => `<div class="gh o14-gh"><span>${esc(g.label)}</span></div><div class="cl-g" style="margin-top:0">${g.list.map(clientCard).join('')}</div>`).join('') +
+    (rest > 0 ? `<button class="btn" data-act="moreClients" style="margin-top:12px">Показать ещё ${Math.min(rest, PAGE)} из ${rest}</button>` : '');
 }
 
 // Строка клиента во вкладке «Клиенты»
+// Спокойная аватарка: мягкий фон и цветные буквы
+const AV_SOFT = ['#2563EB', '#DB2777', '#059669', '#EA580C', '#7C3AED', '#0891B2'];
+function avSoft(name) {
+  let h = 0;
+  for (const ch of String(name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const c = AV_SOFT[h % AV_SOFT.length];
+  return `color:${c};background:color-mix(in srgb, ${c} 13%, transparent)`;
+}
+
 function clientCard(c) {
-  const lost = c.days > 60 && !c.active;
-  const back = lost ? waLink(c.phone, fillText(state.texts.comeback || '', { client: c.name.split(' ')[0], no: '', debt: 0, track: '' })) : null;
-  const when = c.days === 0 ? 'сегодня' : c.days === 1 ? 'вчера' : daysWord(c.days) + ' назад';
-  const sub = c.isNew ? `новый клиент · ${when}`
-    : c.active ? `${ordersWord(c.count)} · ${c.active} в работе`
-    : lost ? `${ordersWord(c.count)} · <span class="slow">не было ${daysWord(c.days)}</span>`
-    : `${ordersWord(c.count)} · ${when}`;
-  const right = c.debt > 0 ? `<span class="cl-v debt money">долг ${moneyShort(c.debt)}</span>`
-    : back ? `<button class="rbtn sm wa-ic" data-act="open" data-url="${esc(back)}" aria-label="Написать">${icon('chat')}</button>`
-    : `<span class="cl-v money">${moneyShort(c.total)}</span>`;
+  const sub = c.isNew ? 'новый клиент' : `${ordersWord(c.count)}${c.active ? ` · ${c.active} в работе` : ''}`;
+  const pill = c.debt > 0 ? `<span class="o15-pill d">−${moneyNum(c.debt)}<em>₸</em></span>` : `<span class="o15-pill">${moneyNum(c.total)}<em>₸</em></span>`;
   return `
     <div class="cl-r" data-act="openClient" data-key="${esc(c.key)}">
-      <span class="cl-av" style="${avStyle(c.name)}">${esc(initials(c.name))}</span>
+      <span class="cl-av" style="${avSoft(c.name)}">${esc(initials(c.name))}</span>
       <span class="cl-t"><b><span class="ellipsis">${esc(c.name)}</span>${c.vip ? `<span class="cl-star">${icon('star')}</span>` : ''}${c.bday !== null && c.bday <= 7 ? `<span class="cl-cake">${icon('cake')}</span>` : ''}</b><small>${sub}</small></span>
-      ${right}
+      ${pill}
     </div>`;
 }
 
