@@ -4437,13 +4437,7 @@ function clientsListHtml() {
   if (!list.length) return bar + emptyHtml('🤷', 'Никого не нашли', q ? 'Попробуйте часть имени или последние 4 цифры телефона' : dr ? 'В эти даты заказов не было' : 'В этой группе пока никого');
   const shown = list.slice(0, state.limit);
   const rest = list.length - shown.length;
-  const groups = [];
-  shown.forEach(c => {
-    const label = dayLabel(c.last);
-    if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, list: [] });
-    groups[groups.length - 1].list.push(c);
-  });
-  return bar + groups.map(g => `<div class="gh o14-gh"><span>${esc(g.label)}</span></div><div class="cl-g" style="margin-top:0">${g.list.map(clientCard).join('')}</div>`).join('') +
+  return bar + `<div class="cl-g" style="margin-top:0">${shown.map(clientCard).join('')}</div>` +
     (rest > 0 ? `<button class="btn" data-act="moreClients" style="margin-top:12px">Показать ещё ${Math.min(rest, PAGE)} из ${rest}</button>` : '');
 }
 
@@ -4457,14 +4451,26 @@ function avSoft(name) {
   return `color:${c};background:color-mix(in srgb, ${c} 13%, transparent)`;
 }
 
+// Когда был последний заказ — коротко, как в списке чатов
+function whenShort(t) {
+  const d = new Date(t), n = new Date();
+  const diff = Math.round((new Date(n.getFullYear(), n.getMonth(), n.getDate()) - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / DAY);
+  if (diff <= 0) return 'сегодня';
+  if (diff === 1) return 'вчера';
+  if (diff < 7) return d.toLocaleDateString('ru-RU', { weekday: 'short' });
+  return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', '');
+}
+
 function clientCard(c) {
-  const sub = c.isNew ? 'новый клиент' : `${ordersWord(c.count)}${c.active ? ` · ${c.active} в работе` : ''}`;
-  const pill = c.debt > 0 ? `<span class="o15-pill d">−${moneyNum(c.debt)}<em>₸</em></span>` : `<span class="o15-pill">${moneyNum(c.total)}<em>₸</em></span>`;
+  const sub = c.debt > 0 ? `<small class="debt">должен ${money(c.debt)}</small>`
+    : `<small>${c.isNew ? 'новый клиент' : ordersWord(c.count)}${c.active ? ` · ${c.active} в работе` : ''}</small>`;
   return `
-    <div class="cl-r" data-act="openClient" data-key="${esc(c.key)}">
+    <div class="cl-r cl2" data-act="openClient" data-key="${esc(c.key)}">
       <span class="cl-av" style="${avSoft(c.name)}">${esc(initials(c.name))}</span>
-      <span class="cl-t"><b><span class="ellipsis">${esc(c.name)}</span>${c.vip ? `<span class="cl-star">${icon('star')}</span>` : ''}${c.bday !== null && c.bday <= 7 ? `<span class="cl-cake">${icon('cake')}</span>` : ''}</b><small>${sub}</small></span>
-      ${pill}
+      <span class="cl-t">
+        <b><span class="ellipsis">${esc(c.name)}</span>${c.vip ? `<span class="cl-star">${icon('star')}</span>` : ''}${c.bday !== null && c.bday <= 7 ? `<span class="cl-cake">${icon('cake')}</span>` : ''}<em>${whenShort(c.last)}</em></b>
+        <span class="cl2-l2">${sub}<i>${moneyShort(c.total)}</i></span>
+      </span>
     </div>`;
 }
 

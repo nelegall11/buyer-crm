@@ -1602,3 +1602,15 @@ body.overlay .card { border-radius: 16px; box-shadow: var(--shadow14); }
 .cc2-ab span { font-size: 13px; color: var(--hint); width: 100px; flex: none; }
 .cc2-ab b { flex: 1; min-width: 0; font-size: 14px; font-weight: 500; }
 .cc2-ab b.lk { color: var(--btn); font-weight: 600; }
+
+/* ---------- v32: список клиентов — один сплошной список, как чаты ---------- */
+.cl2 { padding: 11px 14px; min-height: 64px; }
+.cl2 .cl-av { width: 44px; height: 44px; font-size: 14px; }
+.cl2 + .cl2::before { left: 70px; }
+.cl2 .cl-t b { display: flex; align-items: baseline; gap: 4px; font-size: 15.5px; }
+.cl2 .cl-t b .ellipsis { flex: 0 1 auto; }
+.cl2 .cl-t b em { margin-left: auto; padding-left: 8px; font-style: normal; font-size: 12.5px; font-weight: 500; color: var(--hint); flex: none; }
+.cl2-l2 { display: flex; align-items: baseline; gap: 8px; margin-top: 3px; }
+.cl2-l2 small { flex: 1; min-width: 0; margin: 0 !important; font-size: 13px !important; }
+.cl2-l2 small.debt { color: var(--danger); font-weight: 500; }
+.cl2-l2 i { font-style: normal; font-size: 13px; font-weight: 600; color: var(--hint); flex: none; font-variant-numeric: tabular-nums; }
