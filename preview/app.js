@@ -397,7 +397,7 @@ function render() {
   document.body.classList.toggle('overlay', !!top);
   document.body.classList.toggle('home', !top && ['today', 'orders', 'profile', 'clients'].includes(state.tab) && !state.loading && !state.error);
   $('#title').textContent = top ? screenTitle(top) : state.tab === 'today' ? greetingTitle() : TAB_TITLES[state.tab];
-  $('#backBtn').hidden = IN_TG || !top;
+  $('#backBtn').hidden = !top; // своя кнопка «Назад» видна и в Telegram: его кнопка вверху слишком незаметна
   $('#setBtn').hidden = !!top || state.loading || !!state.error;
 
   const navTab = state.tab === 'biz' ? 'profile' : state.tab; // «Бизнес» открывается из профиля
