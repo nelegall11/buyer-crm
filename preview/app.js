@@ -644,6 +644,7 @@ const ACTIONS = {
   attnKind: d => { state.attnKind = d.v; render(); },
   bestClients: () => { state.csort = 'total'; state.cseg = 'all'; switchTab('clients'); },
   goSearch: () => {
+    state.searchOpen = true;
     switchTab('orders');
     const el = $('#search');
     if (el) el.focus();
@@ -839,6 +840,41 @@ const ACTIONS = {
   moreClients: () => { state.limit += PAGE; $('#clientList').innerHTML = clientsListHtml(); },
   more: () => { state.limit += PAGE; $('#orderList').innerHTML = orderListHtml(); },
   selectMode: () => { state.selecting = !state.selecting; state.selected = []; render(); },
+  ostage: d => {
+    state.omode = 'work';
+    state.filter = String(state.filter) === String(d.v) ? 'active' : (d.v === 'going' ? 'going' : Number(d.v));
+    state.limit = PAGE;
+    render();
+    haptic('light');
+  },
+  ochip: d => { state.omode = 'work'; ACTIONS.filter(d); },
+  qdate: d => { state.qdate = d.v && !(state.qdate && state.qdate.key === d.v) ? qdateRange(d.v) : null; state.limit = PAGE; render(); },
+  qdateSheet: () => {
+    const v = t => new Date(t).toISOString().slice(0, 10);
+    const q = state.qdate && state.qdate.key === 'custom' ? state.qdate : qdateRange('month');
+    openSheet('qdate', `<h3>Заказы за даты</h3>
+      <div class="fields-row">
+        <div class="field"><label for="qFrom">С</label><input id="qFrom" class="input" type="date" value="${v(q.from + 12 * 3600000)}"></div>
+        <div class="field"><label for="qTo">По</label><input id="qTo" class="input" type="date" value="${v(q.to - 12 * 3600000)}"></div>
+      </div>
+      <button class="btn primary" data-act="qdateApply" style="margin-top:12px">Показать</button>`);
+  },
+  qdateApply: () => {
+    const a = $('#qFrom').value, b = $('#qTo').value || a;
+    if (!a) return toast('Выберите дату', true);
+    let from = new Date(a + 'T00:00').getTime(), to = new Date(b + 'T00:00').getTime() + DAY;
+    if (to <= from) [from, to] = [to - DAY, from + DAY];
+    const short = shortDate(from) === shortDate(to - DAY) ? shortDate(from) : `${shortDate(from)} – ${shortDate(to - DAY)}`;
+    state.qdate = { key: 'custom', from, to, short, label: short };
+    state.limit = PAGE;
+    closeSheet();
+  },
+  searchToggle: () => {
+    state.searchOpen = !(state.searchOpen || state.query);
+    if (!state.searchOpen) { state.query = ''; state.qdate = null; }
+    render();
+    if (state.searchOpen) { const el = $('#search'); if (el) el.focus(); }
+  },
   omode: d => { state.omode = d.v === 'all' ? 'all' : 'work'; state.limit = PAGE; render(); },
   periodSheet: () => {
     const cur = state.period14 || 'month';
@@ -850,6 +886,7 @@ const ACTIONS = {
   },
   setPeriod: d => { state.period14 = d.v; state.limit = PAGE; closeSheet(); },
   ordersMore: () => {
+    if (['debt', S.DONE, S.CANCEL, 'all'].map(String).includes(String(state.filter))) { state.filter = 'active'; state.limit = PAGE; return render(); }
     const f = String(state.filter);
     const row = (v, label) => `<button class="lrow srow ${f === String(v) ? 'cur' : ''}" data-act="moreFilter" data-v="${v}"><span class="grow">${label}</span><span class="hint">${state.orders.filter(o => matchFilter(o, v)).length}</span>${f === String(v) ? icon('check') : ''}</button>`;
     const srt = Object.keys(ORDER_SORTS).map(k => `<button class="${state.sort === k ? 'on' : ''}" data-act="sortPick" data-v="${k}">${ORDER_SORTS[k]}</button>`).join('');
@@ -1096,6 +1133,15 @@ function currentScreen() { return state.stack[state.stack.length - 1]; }
 
 const ORDER_SORTS = { new: 'Новые', debt: 'С долгом', old: 'Дольше ждут' };
 
+// Путь заказа сверху «Заказов»: 4 шага, под каждым — сколько заказов на нём
+const FLOW_STAGES = [
+  { v: S.WAIT, label: 'Оплата', title: 'Ждут оплаты', hint: 'оплатил — заказ уйдёт в «Выкуп»' },
+  { v: S.PAID, label: 'Выкуп', title: 'Выкупить', hint: 'выкупил — заказ уйдёт дальше, в «Едут»' },
+  { v: 'going', label: 'Едут', title: 'Едут', hint: 'следующий шаг: на склад → отправлен → пришёл' },
+  { v: S.ARRIVED, label: 'Выдать', title: 'Выдать', hint: 'выдал — заказ закрыт' },
+];
+function stageOf(f) { return FLOW_STAGES.findIndex(x => String(x.v) === String(f)); }
+
 function ordersTab() {
   if (!state.orders.length) {
     return emptyHtml('📭', 'Заказов пока нет', 'Нажмите «+» внизу, чтобы добавить первый');
@@ -1104,44 +1150,70 @@ function ordersTab() {
   const active = state.orders.filter(o => !isClosed(o));
   const visible = filteredOrders().map(o => o.no);
   const allSel = visible.length && visible.every(n => state.selected.includes(n));
+  const searchOpen = state.searchOpen || !!state.query;
   const head = state.selecting
     ? `<div class="o14-sel"><button data-act="selectMode">Отмена</button><b>Выбрано ${state.selected.length}</b><button data-act="selectAll">${allSel ? 'Снять' : 'Все'}</button></div>`
     : `<div class="h14-hd o14-hd">
         <div class="grow"><b>Заказы</b><small>${active.length} в работе · на ${moneyShort(active.reduce((a, o) => a + o.total, 0))}</small></div>
+        <button class="h14-ib ${searchOpen ? 'on' : ''}" data-act="searchToggle" aria-label="Поиск">${icon('search')}</button>
         <button class="h14-ib" data-act="selectMode" aria-label="Выбрать несколько">${icon('checks')}</button>
       </div>`;
-  const chip = (v, label) => {
-    const n = state.orders.filter(o => matchFilter(o, v)).length;
-    return `<button class="o14-chip ${String(state.filter) === String(v) ? 'on' : ''}" data-act="filter" data-v="${v}">${label}<b>${n}</b></button>`;
-  };
-  const extra = ['debt', S.DONE, S.CANCEL, 'all'].map(String).includes(String(state.filter));
-  const due = attentionItems().filter(x => x.prio === 0).length;
-  let body;
-  if (!all) {
-    body = `
-      <div class="o14-chips">
-        ${chip('active', 'Все')}${chip(S.WAIT, 'Оплата')}${chip(S.PAID, 'Выкуп')}${chip('going', 'Едут')}${chip(S.ARRIVED, 'Выдать')}
-        <button class="o14-chip ${extra ? 'on' : ''}" data-act="ordersMore">${icon('sort')}${extra ? esc(EXTRA_FILTERS[String(state.filter)] || 'Ещё') : 'Ещё'}</button>
-      </div>
-      ${due && !state.selecting ? `<button class="o14-urg" data-act="openAttention">${icon('calendar')}<span>${due === 1 ? '1 заказ нужен' : `${due} заказа нужны`} к сроку</span>${icon('chevron')}</button>` : ''}`;
-  } else {
+  const qd = state.qdate;
+  const search = searchOpen ? `<div class="search-wrap">${icon('search')}
+      <input id="search" class="input search" type="search" placeholder="Имя, телефон, № или дата 24.11" value="${esc(state.query)}" autocomplete="off">
+    </div>
+    <div class="o15-dates">
+      ${Object.keys(QDATES).map(k => `<button class="${qd && qd.key === k ? 'on' : ''}" data-act="qdate" data-v="${k}">${QDATES[k]}</button>`).join('')}
+      <button class="${qd && qd.key === 'custom' ? 'on' : ''}" data-act="qdateSheet">${icon('calendar')}${qd && qd.key === 'custom' ? esc(qd.short) : 'Даты'}</button>
+      ${qd ? `<button class="x" data-act="qdate" data-v="" aria-label="Сбросить даты">✕</button>` : ''}
+    </div>` : '';
+
+  if (all) {
     const p = periodRange();
     const rows = bizRows().filter(r => { const t = new Date(r.date).getTime(); return t >= p.from && t < p.to; });
-    body = `
+    return `
+      ${head}${search}
+      <div class="o15-bar"><button data-act="omode" data-v="work">${icon('chevron')}В работе</button><span></span></div>
       <div class="o14-per"><button class="o14-pick" data-act="periodSheet">${esc(p.label)}${icon('chevron')}</button><span>${esc(p.range)}</span></div>
       <div class="o14-sum">
         <div><span>Заказов</span><b>${rows.length}</b></div>
         <div><span>Выручка</span><b class="money">${moneyShort(sumBy(rows, 'total'))}</b></div>
         <div><span>Прибыль</span><b class="money ok">${moneyShort(sumBy(rows, 'profit'))}</b></div>
-      </div>`;
+      </div>
+      <div id="orderList">${orderListHtml()}</div>`;
   }
+
+  const cur = stageOf(state.filter);
+  const extra = ['debt', S.DONE, S.CANCEL, 'all'].map(String).includes(String(state.filter));
+  const due = attentionItems().filter(x => x.prio === 0).length;
+  const counts = FLOW_STAGES.map(x => state.orders.filter(o => matchFilter(o, x.v)).length);
+  const flow = `
+    <div class="o15-flow">
+      <div class="o15-line"><i style="width:${cur > 0 ? cur / 3 * 100 : 0}%"></i></div>
+      <div class="o15-st">${FLOW_STAGES.map((x, k) => `
+        <button class="o15-s ${k === cur ? 'on' : ''} ${counts[k] ? 'has' : 'zero'}" data-act="ostage" data-v="${x.v}">
+          <span class="dot"></span><b>${counts[k]}</b><small>${x.label}</small></button>`).join('')}
+      </div>
+    </div>`;
+  const list = filteredOrders();
+  const sum = list.reduce((a, o) => a + (isCancelled(o) ? 0 : o.total), 0);
+  const dateFind = state.qdate || parseQDate(state.query.trim());
+  if (dateFind) {
+    return `
+    ${head}${search}
+    ${flow}
+    <div class="o15-bar"><b>${ordersWord(list.length)} · ${esc(dateFind.label)}</b><span>≈ ${moneyShort(sum)}</span></div>
+    <div id="orderList">${orderListHtml()}</div>`;
+  }
+  const left = cur >= 0 ? `<b>${FLOW_STAGES[cur].title} · ${list.length}</b>`
+    : extra ? `<b>${esc(EXTRA_FILTERS[String(state.filter)] || 'Заказы')} · ${list.length}</b>`
+    : due && !state.selecting ? `<button class="urg" data-act="openAttention">${icon('calendar')}Срочно ${due}</button>` : '<span></span>';
+  const right = cur >= 0 ? `<span>≈ ${moneyShort(sum)}</span>`
+    : `<span><button data-act="ordersMore">${extra ? 'Сбросить' : 'Ещё'}</button><button data-act="omode" data-v="all">Все заказы →</button></span>`;
   return `
-    ${head}
-    <div class="search-wrap">${icon('search')}
-      <input id="search" class="input search" type="search" placeholder="Имя, телефон, № или трек" value="${esc(state.query)}" autocomplete="off">
-    </div>
-    <div class="o14-mode"><button class="${all ? '' : 'on'}" data-act="omode" data-v="work">В работе · ${active.length}</button><button class="${all ? 'on' : ''}" data-act="omode" data-v="all">Все заказы</button></div>
-    ${body}
+    ${head}${search}
+    ${flow}
+    <div class="o15-bar">${left}${right}</div>
     <div id="orderList">${orderListHtml()}</div>`;
 }
 
@@ -1173,6 +1245,31 @@ function matchFilter(o, f) {
   return statusIdx(o.status) === Number(f);
 }
 
+// Дата текстом в поиске: «24.11», «24.11.2026», «3/9» → этот день
+function parseQDate(q) {
+  const m = String(q || '').trim().match(/^(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2}|\d{4}))?$/);
+  if (!m) return null;
+  const now = new Date();
+  let y = m[3] ? Number(m[3]) : now.getFullYear();
+  if (y < 100) y += 2000;
+  const d = new Date(y, Number(m[2]) - 1, Number(m[1]));
+  if (isNaN(d) || d.getDate() !== Number(m[1])) return null;
+  if (!m[3] && d > now) d.setFullYear(y - 1); // «28.12» в ноябре — это прошлый декабрь
+  return { from: d.getTime(), to: d.getTime() + DAY, label: d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) };
+}
+
+// Быстрые даты под строкой поиска
+const QDATES = { today: 'Сегодня', yest: 'Вчера', week: '7 дней', month: 'Этот месяц' };
+function qdateRange(k) {
+  const n = new Date();
+  const d0 = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
+  if (k === 'today') return { key: k, from: d0, to: d0 + DAY, label: 'сегодня' };
+  if (k === 'yest') return { key: k, from: d0 - DAY, to: d0, label: 'вчера' };
+  if (k === 'week') return { key: k, from: d0 - 6 * DAY, to: d0 + DAY, label: 'за 7 дней' };
+  return { key: 'month', from: new Date(n.getFullYear(), n.getMonth(), 1).getTime(), to: d0 + DAY, label: 'за этот месяц' };
+}
+function shortDate(t) { return new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', ''); }
+
 function filteredOrders() {
   const q = state.query.trim().toLowerCase();
   const digits = q.replace(/\D/g, '');
@@ -1183,14 +1280,20 @@ function filteredOrders() {
     old: (a, b) => (isClosed(a) - isClosed(b)) || new Date(a.statusAt || a.date) - new Date(b.statusAt || b.date),
   };
   const per = state.omode === 'all' ? periodRange() : null;
+  // Поиск по датам: кнопка «Сегодня / Вчера / …», свой период или дата текстом («24.11»).
+  // Ищем по всем загруженным заказам, а не только по выбранному этапу.
+  const typed = parseQDate(q);
+  const dr = state.qdate || typed;
+  const inRange = (o, r) => { const t = new Date(o.date).getTime(); return t >= r.from && t < r.to; };
+  const text = typed ? '' : q;
   return state.orders
-    .filter(o => per ? (new Date(o.date).getTime() >= per.from && new Date(o.date).getTime() < per.to) : matchFilter(o, state.filter))
-    .filter(o => !q ||
+    .filter(o => dr ? inRange(o, dr) : per ? inRange(o, per) : matchFilter(o, state.filter))
+    .filter(o => !text || (q => 
       o.client.toLowerCase().includes(q) ||
       String(o.no) === q.replace('№', '') ||
       (digits.length >= 3 && o.phone.replace(/\D/g, '').includes(digits)) ||
       (track.length >= 4 && normTrack(o.track).includes(track)) ||
-      (q.length >= 3 && !!o.instagram && o.instagram.includes(q.replace(/^@/, ''))))
+      (q.length >= 3 && !!o.instagram && o.instagram.includes(q.replace(/^@/, ''))))(text))
     .sort(sorters[state.sort] || sorters.new);
 }
 
@@ -1216,19 +1319,21 @@ function orderListHtml() {
   const shown = list.slice(0, state.limit);
   const rest = list.length - shown.length;
   let body;
-  if (state.sort === 'new') {
+  const stage = stageOf(state.filter);
+  if (state.sort === 'new' && stage < 0) {
     const groups = [];
     shown.forEach(o => {
       const label = dayLabel(o.date);
       if (!groups.length || groups[groups.length - 1].label !== label) groups.push({ label, list: [] });
       groups[groups.length - 1].list.push(o);
     });
-    body = groups.map(g => `<div class="gh o14-gh"><span>${esc(g.label)}</span><b class="money">${money(g.list.reduce((a, o) => a + (isCancelled(o) ? 0 : o.total), 0))}</b></div><div class="list o14-list">${g.list.map(orderRow).join('')}</div>`).join('');
+    body = groups.map(g => `<div class="gh o14-gh"><span>${esc(g.label)}</span></div><div class="list o14-list">${g.list.map(orderRow).join('')}</div>`).join('');
   } else {
     body = `<div class="list o14-list">${shown.map(orderRow).join('')}</div>`;
   }
   let swipeHint = '';
   try { swipeHint = !state.selecting && 'ontouchstart' in window && !localStorage.getItem('buyercrm-swiped') ? `<p class="hint small center">Смахните заказ вправо — следующий этап, влево — WhatsApp</p>` : ''; } catch (e) { /* нет — не страшно */ }
+  if (stage >= 0 && !state.selecting) body += `<p class="o15-hint">✓ — ${FLOW_STAGES[stage].hint}</p>`;
   return swipeHint + body +
     (rest > 0 ? `<button class="btn" data-act="more">Показать ещё ${Math.min(rest, PAGE)} из ${rest}</button>` : '') +
     archiveHint;
@@ -1243,16 +1348,21 @@ function orderRow(o) {
   const shop = o.items && o.items[0] ? site(o.items[0].link) : '';
   const known = shop && shop !== 'Без ссылки';
   const shopName = known ? shop.split('.')[0].replace(/-demo$/, '').replace(/^./, c => c.toUpperCase()) : '';
-  const letter = ((known ? shopName : o.client) || '?').replace(/[^\p{L}\p{N}]/gu, '').charAt(0).toUpperCase() || '?';
   const what = o.count > 1 ? `${o.count} ${o.count < 5 ? 'товара' : 'товаров'}` : (o.items && o.items[0] ? productName(o.items[0].link) : '');
-  const debt = o.debt > 0 && !cancelled && i !== S.WAIT;
-  const sub = debt ? `<small class="debt">долг ${money(o.debt)}</small>` : `<small>${esc([shopName, what].filter(Boolean).join(' · ') || `№${o.no}`)}</small>`;
+  const sub = `<small>${esc([shopName, what].filter(Boolean).join(' · ') || `№${o.no}`)}</small>`;
+  // Плашка цены: серая — оплачено, красная — долг (остаток), жёлтая — ещё не платили
+  const unpaid = !cancelled && o.paid <= 0 && o.total > 0;
+  const debt = !cancelled && !unpaid && o.debt > 0;
+  const pill = `<span class="o15-pill ${cancelled ? 'gone' : debt ? 'd' : unpaid ? 'w' : ''}">${debt ? '−' + moneyNum(o.debt) : moneyNum(o.total)}<em>₸</em></span>`;
+  const note = debt ? `из ${moneyNum(o.total)} · ${stateWord(o, i)}` : stateWord(o, i);
   return `
     <div class="lrow orow o14-row ${checked ? 'checked' : ''}" data-act="${sel ? 'toggleSel' : 'openOrder'}" data-no="${o.no}" ${sel ? '' : 'data-swipe="1"'}>
       ${sel ? `<span class="check">${checked ? '✓' : ''}</span>`
-        : `<span class="o14-logo"><span class="s" style="background:${shopColor(known ? shop : o.client)}">${esc(letter)}</span><span class="c">${esc(initials(o.client))}</span></span>`}
+        : `${stageIcon(i)}`}
       <div class="grow o14-m"><b>${esc(o.client)}</b>${sub}</div>
-      <div class="o14-r"><b class="money ${cancelled ? 'gone' : ''}">${money(o.total)}</b>${sel ? statusTrack(o, i) : nextStatusBtn(o, i)}</div>
+      ${!sel && stageOf(state.filter) >= 0 && i in NEXT_VERB
+        ? `${pill}<button class="o15-ok" data-act="setStatus" data-no="${o.no}" data-i="${i + 1}" aria-label="${NEXT_VERB[i]}">${icon('check')}</button>`
+        : `<div class="o15-r">${pill}<small>${esc(note)}</small></div>`}
     </div>`;
 }
 
@@ -1274,6 +1384,22 @@ function nextStatusBtn(o, i) {
   const bars = [1, 2, 3, 4, 5].map(k => `<i${k <= step ? ' class="on"' : ''}></i>`).join('');
   const days = i === S.WAY ? ` title="В пути ${daysSince(o.statusAt || o.date)} дн"` : '';
   return `<button class="o14-next" style="--c:${look}" data-act="setStatus" data-no="${o.no}" data-i="${i + 1}"${days} aria-label="Перевести в «${esc(state.statuses[i + 1])}»"><span class="bars">${bars}</span>${NEXT_VERB[i]}${icon('chevron')}</button>`;
+}
+
+// Значок этапа слева в строке заказа: что сейчас с заказом
+const STAGE_ICON = {
+  [S.WAIT]: ['cash', '#D97706'], [S.PAID]: ['cart', 'var(--btn)'], [S.BOUGHT]: ['box', '#0EA5E9'], [S.STOCK]: ['box', '#0EA5E9'],
+  [S.WAY]: ['truck', '#8B5CF6'], [S.ARRIVED]: ['gift', '#16A34A'], [S.DONE]: ['check', 'var(--hint)'], [S.CANCEL]: ['box', 'var(--hint)'],
+};
+function stageIcon(i) {
+  const [ic, c] = STAGE_ICON[i] || ['box', 'var(--hint)'];
+  return `<span class="o15-si ${i === S.CANCEL ? 'gone' : ''}" style="--c:${c}">${icon(ic)}</span>`;
+}
+
+// Где заказ сейчас — короткой серой подписью
+function stateWord(o, i) {
+  return { [S.WAIT]: 'ждёт оплаты', [S.PAID]: 'выкупить', [S.BOUGHT]: 'на склад', [S.STOCK]: 'на складе',
+    [S.WAY]: `едет · ${daysSince(o.statusAt || o.date)} дн`, [S.ARRIVED]: 'выдать', [S.DONE]: 'выдан', [S.CANCEL]: 'отменён' }[i] || o.status;
 }
 
 function statusTrack(o, i) {
@@ -4318,6 +4444,9 @@ function parseNum(t) {
 }
 
 // 12500 → «12 500 ₸»
+// Число с пробелами между тысячами, без «₸» (для плашки цены)
+function moneyNum(n) { return money(n).replace(/\s*₸\s*$/, ''); }
+
 function money(n) {
   const v = Math.round(Number(n) || 0);
   return (v < 0 ? '−' : '') + String(Math.abs(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' ₸';
