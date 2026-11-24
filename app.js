@@ -2457,15 +2457,22 @@ function orderScreen({ no }) {
     </div>
     <div class="od2-acts" style="grid-template-columns:repeat(${acts.length},1fr)">${acts.join('')}</div>
 
-    <div class="cc-h">Товары · ${o.count}</div>
-    <div class="cl-g" style="margin-top:0">
-      ${o.items.map(it => `
-        <div class="cl-r" ${isUrl(it.link) ? `data-act="open" data-url="${esc(it.link)}"` : ''}>
-          <span class="od-mark ${it.bought ? 'on' : ''}" title="${it.bought ? 'Выкуплен' : 'Не выкуплен'}">${it.bought ? icon('check') : ''}</span>
-          <span class="cl-t"><b><span class="ellipsis">${esc(itemLabel(it))}</span></b><small>${fmtNum(it.amount)} ${it.currency} × ${it.qty} · курс ${fmtNum(it.rate)} · +${fmtNum(it.markup)}%</small></span>
-          <span class="cl-v money">${money(it.price)}</span>
-        </div>`).join('')}
-    </div>
+    <div class="cc-h od2-ih"><span>Товары · ${o.count}</span><span>${money(o.items.reduce((a, it) => a + (Number(it.price) || 0), 0))}</span></div>
+    ${o.items.map(it => {
+      const url = isUrl(it.link);
+      const name = productName(it.link);
+      const src = `${fmtNum(it.amount)} ${esc(it.currency)}${it.qty > 1 ? ` × ${it.qty}` : ''}`;
+      return `
+      <div class="od2-item">
+        <b class="nm">${esc(name.charAt(0).toUpperCase() + name.slice(1))}</b><b class="pr money">${money(it.price)}</b>
+        <span class="sh">${url ? esc(site(it.link)) : 'без ссылки'}</span><span class="sr">${src}</span>
+        <div class="row">
+          ${it.size ? `<span class="sz">${esc(it.size)}</span>` : ''}${it.qty > 1 ? `<span class="sz">${it.qty} шт</span>` : ''}
+          <span class="bt ${it.bought ? 'ok' : ''}">${it.bought ? icon('check') + 'выкуплен' : 'не выкуплен'}</span>
+          ${url ? `<button class="lk" data-act="open" data-url="${esc(it.link)}">Открыть${icon('external')}</button>` : ''}
+        </div>
+      </div>`;
+    }).join('')}
 
     <div class="cc-h">Доставка</div>
     <div class="cl-g" style="margin-top:0">

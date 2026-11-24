@@ -1503,3 +1503,20 @@ body.overlay .card { border-radius: 16px; box-shadow: var(--shadow14); }
 .od2-acts .ln .ic { color: #0EA5E9; }
 .od2-acts button:active { transform: scale(.97); }
 .od2-link { color: var(--btn); font-weight: 600; font-size: 14px; flex: none; }
+
+/* ---------- v29: товары в заказе — карточками ---------- */
+.od2-ih { display: flex; justify-content: space-between; }
+.od2-ih span:last-child { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.od2-item { background: var(--bg); border-radius: 16px; box-shadow: var(--shadow14); padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; }
+.od2-item + .od2-item { margin-top: 8px; }
+.od2-item .nm { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.od2-item .pr { font-size: 15px; font-weight: 600; text-align: right; }
+.od2-item .sh { font-size: 12.5px; color: var(--hint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.od2-item .sr { font-size: 12px; color: var(--hint); text-align: right; white-space: nowrap; }
+.od2-item .row { grid-column: 1 / 3; display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.od2-item .sz { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 7px; background: color-mix(in srgb, var(--btn) 13%, transparent); color: var(--btn); font-size: 12.5px; font-weight: 600; }
+.od2-item .bt { display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px; border-radius: 7px; background: var(--soft); color: var(--hint); font-size: 12px; font-weight: 600; }
+.od2-item .bt.ok { background: color-mix(in srgb, #16A34A 13%, transparent); color: #16A34A; }
+.od2-item .bt .ic { width: 12px; height: 12px; stroke-width: 2.6; }
+.od2-item .lk { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 0; color: var(--btn); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.od2-item .lk .ic { width: 15px; height: 15px; }
