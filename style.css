@@ -1452,3 +1452,11 @@ body.overlay .card { border-radius: 16px; box-shadow: var(--shadow14); }
 .o15-si { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent); }
 .o15-si .ic { width: 18px; height: 18px; stroke-width: 2; }
 .o15-si.gone { opacity: .5; }
+
+/* ---------- v27: поиск по датам ---------- */
+.o15-dates { display: flex; gap: 6px; overflow-x: auto; margin: 10px -12px 12px; padding: 0 12px; scrollbar-width: none; }
+.o15-dates::-webkit-scrollbar { display: none; }
+.o15-dates button { flex: none; display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 12px; border-radius: 16px; border: 0; background: var(--bg); box-shadow: var(--shadow14); color: var(--text); font: inherit; font-size: 13px; font-weight: 500; }
+.o15-dates button.on { background: var(--btn); color: var(--btn-text); }
+.o15-dates button .ic { width: 14px; height: 14px; }
+.o15-dates button.x { width: 32px; padding: 0; justify-content: center; color: var(--hint); }

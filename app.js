@@ -848,9 +848,30 @@ const ACTIONS = {
     haptic('light');
   },
   ochip: d => { state.omode = 'work'; ACTIONS.filter(d); },
+  qdate: d => { state.qdate = d.v && !(state.qdate && state.qdate.key === d.v) ? qdateRange(d.v) : null; state.limit = PAGE; render(); },
+  qdateSheet: () => {
+    const v = t => new Date(t).toISOString().slice(0, 10);
+    const q = state.qdate && state.qdate.key === 'custom' ? state.qdate : qdateRange('month');
+    openSheet('qdate', `<h3>Заказы за даты</h3>
+      <div class="fields-row">
+        <div class="field"><label for="qFrom">С</label><input id="qFrom" class="input" type="date" value="${v(q.from + 12 * 3600000)}"></div>
+        <div class="field"><label for="qTo">По</label><input id="qTo" class="input" type="date" value="${v(q.to - 12 * 3600000)}"></div>
+      </div>
+      <button class="btn primary" data-act="qdateApply" style="margin-top:12px">Показать</button>`);
+  },
+  qdateApply: () => {
+    const a = $('#qFrom').value, b = $('#qTo').value || a;
+    if (!a) return toast('Выберите дату', true);
+    let from = new Date(a + 'T00:00').getTime(), to = new Date(b + 'T00:00').getTime() + DAY;
+    if (to <= from) [from, to] = [to - DAY, from + DAY];
+    const short = shortDate(from) === shortDate(to - DAY) ? shortDate(from) : `${shortDate(from)} – ${shortDate(to - DAY)}`;
+    state.qdate = { key: 'custom', from, to, short, label: short };
+    state.limit = PAGE;
+    closeSheet();
+  },
   searchToggle: () => {
     state.searchOpen = !(state.searchOpen || state.query);
-    if (!state.searchOpen) state.query = '';
+    if (!state.searchOpen) { state.query = ''; state.qdate = null; }
     render();
     if (state.searchOpen) { const el = $('#search'); if (el) el.focus(); }
   },
@@ -1137,8 +1158,14 @@ function ordersTab() {
         <button class="h14-ib ${searchOpen ? 'on' : ''}" data-act="searchToggle" aria-label="Поиск">${icon('search')}</button>
         <button class="h14-ib" data-act="selectMode" aria-label="Выбрать несколько">${icon('checks')}</button>
       </div>`;
+  const qd = state.qdate;
   const search = searchOpen ? `<div class="search-wrap">${icon('search')}
-      <input id="search" class="input search" type="search" placeholder="Имя, телефон, № или трек" value="${esc(state.query)}" autocomplete="off">
+      <input id="search" class="input search" type="search" placeholder="Имя, телефон, № или дата 24.11" value="${esc(state.query)}" autocomplete="off">
+    </div>
+    <div class="o15-dates">
+      ${Object.keys(QDATES).map(k => `<button class="${qd && qd.key === k ? 'on' : ''}" data-act="qdate" data-v="${k}">${QDATES[k]}</button>`).join('')}
+      <button class="${qd && qd.key === 'custom' ? 'on' : ''}" data-act="qdateSheet">${icon('calendar')}${qd && qd.key === 'custom' ? esc(qd.short) : 'Даты'}</button>
+      ${qd ? `<button class="x" data-act="qdate" data-v="" aria-label="Сбросить даты">✕</button>` : ''}
     </div>` : '';
 
   if (all) {
@@ -1170,6 +1197,14 @@ function ordersTab() {
     </div>`;
   const list = filteredOrders();
   const sum = list.reduce((a, o) => a + (isCancelled(o) ? 0 : o.total), 0);
+  const dateFind = state.qdate || parseQDate(state.query.trim());
+  if (dateFind) {
+    return `
+    ${head}${search}
+    ${flow}
+    <div class="o15-bar"><b>${ordersWord(list.length)} · ${esc(dateFind.label)}</b><span>≈ ${moneyShort(sum)}</span></div>
+    <div id="orderList">${orderListHtml()}</div>`;
+  }
   const left = cur >= 0 ? `<b>${FLOW_STAGES[cur].title} · ${list.length}</b>`
     : extra ? `<b>${esc(EXTRA_FILTERS[String(state.filter)] || 'Заказы')} · ${list.length}</b>`
     : due && !state.selecting ? `<button class="urg" data-act="openAttention">${icon('calendar')}Срочно ${due}</button>` : '<span></span>';
@@ -1210,6 +1245,31 @@ function matchFilter(o, f) {
   return statusIdx(o.status) === Number(f);
 }
 
+// Дата текстом в поиске: «24.11», «24.11.2026», «3/9» → этот день
+function parseQDate(q) {
+  const m = String(q || '').trim().match(/^(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2}|\d{4}))?$/);
+  if (!m) return null;
+  const now = new Date();
+  let y = m[3] ? Number(m[3]) : now.getFullYear();
+  if (y < 100) y += 2000;
+  const d = new Date(y, Number(m[2]) - 1, Number(m[1]));
+  if (isNaN(d) || d.getDate() !== Number(m[1])) return null;
+  if (!m[3] && d > now) d.setFullYear(y - 1); // «28.12» в ноябре — это прошлый декабрь
+  return { from: d.getTime(), to: d.getTime() + DAY, label: d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' }) };
+}
+
+// Быстрые даты под строкой поиска
+const QDATES = { today: 'Сегодня', yest: 'Вчера', week: '7 дней', month: 'Этот месяц' };
+function qdateRange(k) {
+  const n = new Date();
+  const d0 = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
+  if (k === 'today') return { key: k, from: d0, to: d0 + DAY, label: 'сегодня' };
+  if (k === 'yest') return { key: k, from: d0 - DAY, to: d0, label: 'вчера' };
+  if (k === 'week') return { key: k, from: d0 - 6 * DAY, to: d0 + DAY, label: 'за 7 дней' };
+  return { key: 'month', from: new Date(n.getFullYear(), n.getMonth(), 1).getTime(), to: d0 + DAY, label: 'за этот месяц' };
+}
+function shortDate(t) { return new Date(t).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', ''); }
+
 function filteredOrders() {
   const q = state.query.trim().toLowerCase();
   const digits = q.replace(/\D/g, '');
@@ -1220,14 +1280,20 @@ function filteredOrders() {
     old: (a, b) => (isClosed(a) - isClosed(b)) || new Date(a.statusAt || a.date) - new Date(b.statusAt || b.date),
   };
   const per = state.omode === 'all' ? periodRange() : null;
+  // Поиск по датам: кнопка «Сегодня / Вчера / …», свой период или дата текстом («24.11»).
+  // Ищем по всем загруженным заказам, а не только по выбранному этапу.
+  const typed = parseQDate(q);
+  const dr = state.qdate || typed;
+  const inRange = (o, r) => { const t = new Date(o.date).getTime(); return t >= r.from && t < r.to; };
+  const text = typed ? '' : q;
   return state.orders
-    .filter(o => per ? (new Date(o.date).getTime() >= per.from && new Date(o.date).getTime() < per.to) : matchFilter(o, state.filter))
-    .filter(o => !q ||
+    .filter(o => dr ? inRange(o, dr) : per ? inRange(o, per) : matchFilter(o, state.filter))
+    .filter(o => !text || (q => 
       o.client.toLowerCase().includes(q) ||
       String(o.no) === q.replace('№', '') ||
       (digits.length >= 3 && o.phone.replace(/\D/g, '').includes(digits)) ||
       (track.length >= 4 && normTrack(o.track).includes(track)) ||
-      (q.length >= 3 && !!o.instagram && o.instagram.includes(q.replace(/^@/, ''))))
+      (q.length >= 3 && !!o.instagram && o.instagram.includes(q.replace(/^@/, ''))))(text))
     .sort(sorters[state.sort] || sorters.new);
 }
 
