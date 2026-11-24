@@ -1388,3 +1388,11 @@ body:not(.overlay) .bz-k + .card, .bz-k + .goal-card { margin-top: 8px; }
 body.overlay .section-title { font-size: 12.5px; color: var(--hint); text-transform: uppercase; letter-spacing: .4px; font-weight: 500; margin: 18px 4px 6px; }
 body.overlay .card { border-radius: 16px; box-shadow: var(--shadow14); }
 .cl-r.wrap .cl-t small { white-space: normal; line-height: 1.35; }
+
+/* ---------- v23: следующий этап прямо в строке заказа ---------- */
+.o14-next { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 9px; border-radius: 14px; border: 0; font: inherit; font-size: 12.5px; font-weight: 600; color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent); white-space: nowrap; cursor: pointer; }
+.o14-next .bars { display: flex; gap: 2px; }
+.o14-next .bars i { width: 5px; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--c) 30%, transparent); }
+.o14-next .bars i.on { background: var(--c); }
+.o14-next .ic { width: 13px; height: 13px; margin-left: -2px; }
+.o14-next:active { transform: scale(.95); }
