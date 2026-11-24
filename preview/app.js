@@ -2214,10 +2214,10 @@ function debtsTab() {
         const remind = waLink(o.phone, fillText(state.texts.remind, o));
         const d = daysSince(o.date);
         return `
-          <div class="cl-r">
+          <div class="cl-r wrap">
             <span class="cl-av" style="${avStyle(o.client)}" data-act="openOrder" data-no="${o.no}">${esc(initials(o.client))}</span>
             <span class="cl-t" data-act="openOrder" data-no="${o.no}"><b><span class="ellipsis">${esc(o.client)}</span></b>
-              <small>№${o.no} · ${esc(o.status.toLowerCase())} · ${d >= 30 ? `<span class="debt">${daysWord(d)}</span>` : daysWord(d)}</small></span>
+              <small>${d >= 30 ? `<span class="debt">${daysWord(d)}</span>` : daysWord(d)} · №${o.no} · ${esc(o.status.toLowerCase())}</small></span>
             <span class="cl-v debt money">${moneyShort(o.debt)}</span>
             <button class="sc-rb" data-act="payment" data-no="${o.no}" aria-label="Внести оплату">${icon('cash')}</button>
             ${remind ? `<button class="sc-rb wa" data-act="open" data-url="${esc(remind)}" aria-label="Напомнить в WhatsApp">${icon('chat')}</button>` : ''}
@@ -2599,7 +2599,7 @@ function attentionRow(x) {
     ? `<button class="sc-pill wa" data-act="attnWrite" data-no="${o.no}" data-url="${esc(x.url)}">${icon('chat')}${x.btn}</button>`
     : `<button class="sc-pill" data-act="${x.act}" data-no="${o.no}">${x.btn}</button>`;
   return `
-    <div class="cl-r">
+    <div class="cl-r wrap">
       <span class="cl-av" style="${avStyle(o.client)}" data-act="openOrder" data-no="${o.no}">${esc(initials(o.client))}</span>
       <span class="cl-t" data-act="openOrder" data-no="${o.no}"><b><span class="ellipsis">${esc(o.client)}</span></b>
         <small>№${o.no} · <span class="warn-text">${esc(x.text)}</span></small></span>
