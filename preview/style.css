@@ -1314,3 +1314,28 @@ body.home .top { display: none; }
 .bz-k b { display: block; font-size: 18px; font-weight: 700; letter-spacing: -.3px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bz-k em { display: block; font-size: 12px; color: var(--hint); font-weight: 500; }
 body:not(.overlay) .bz-k + .card, .bz-k + .goal-card { margin-top: 8px; }
+
+/* ---------- v19: нижние блоки «Бизнеса» ---------- */
+.bz-big { font-size: 16px; font-weight: 700; }
+.cl-v.ok, .bz-big.ok { color: #16A34A; }
+.bz-add { color: var(--btn); font-weight: 600; font-size: 14.5px; min-height: 48px; justify-content: center; }
+.bz-add .ic { width: 18px; height: 18px; }
+.bz-net + .cl-g { margin-top: 8px; }
+.bz-tot { border-top: 1px solid var(--sep); margin-top: 6px; padding-top: 9px; }
+.bz-tot span { color: var(--text); font-weight: 600; }
+.bz-tot b { font-size: 17px; font-weight: 700; }
+.bz-tot b.debt { color: var(--danger); }
+.bz-more { margin-top: 8px; }
+.bz-more summary { color: var(--btn); font-size: 14px; font-weight: 500; padding: 8px 4px; cursor: pointer; list-style: none; }
+.bz-more summary::-webkit-details-marker { display: none; }
+.bz-more .cl-g { margin-top: 2px; }
+.bz-del { width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--soft); color: var(--hint); flex: none; font-size: 12px; }
+.bz-stack { display: flex; gap: 3px; height: 12px; }
+.bz-stack i { border-radius: 4px; min-width: 6px; }
+.bz-leg { display: grid; gap: 2px; margin-top: 10px; }
+.bz-leg button { display: flex; align-items: center; gap: 8px; border: 0; background: none; color: var(--text); font: inherit; font-size: 14px; padding: 6px 0; text-align: left; }
+.bz-leg button i { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.bz-leg button span { color: var(--hint); font-size: 13px; margin-left: auto; }
+.bz-leg button b { font-weight: 600; min-width: 78px; text-align: right; }
+.bz-k div[data-act] { cursor: pointer; }
+.bz-k div.bad b { color: var(--danger); }
