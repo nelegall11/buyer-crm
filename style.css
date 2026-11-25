@@ -1619,3 +1619,70 @@ body.overlay .card { border-radius: 16px; box-shadow: var(--shadow14); }
 .cl4-v b { display: block; font-size: 15px; font-weight: 700; }
 .cl4-v b.d { color: var(--danger); }
 .cl4-v small { display: block; font-size: 11.5px; color: var(--hint); margin-top: 2px; }
+
+/* ---------- v34: «Новый заказ» — карточки ---------- */
+.nf-h { font-size: 13px; font-weight: 600; color: var(--hint); margin: 18px 6px 8px; }
+.nf-card { background: var(--bg); border-radius: 20px; box-shadow: var(--shadow14); padding: 14px; }
+.nf-card.pad { padding: 10px; }
+.nf-who { display: flex; align-items: center; gap: 12px; }
+.nf-who b { display: block; font-size: 16px; font-weight: 600; }
+.nf-who small { display: block; font-size: 12.5px; color: var(--hint); margin-top: 2px; }
+.nf-av { width: 44px; height: 44px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 15px; font-weight: 700; flex: none; }
+.nf-link { border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--btn); padding: 6px 0 6px 6px; flex: none; cursor: pointer; }
+.nf-card .note-line { margin-top: 10px; }
+.nf-tip { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding: 9px 8px 9px 12px; border-radius: 14px; background: color-mix(in srgb, var(--btn) 11%, transparent); font-size: 13px; }
+.nf-tip > .ic { width: 16px; height: 16px; color: var(--btn); flex: none; }
+.nf-tip b { flex: 1; font-weight: 500; }
+.nf-tip button { border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 700; color: var(--btn); padding: 4px 6px; white-space: nowrap; cursor: pointer; }
+.nf-tip button.x { color: var(--hint); font-weight: 500; }
+.nf-optrow { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.nf-seg { display: flex; background: var(--soft); border-radius: 11px; padding: 3px; }
+.nf-seg button { flex: 1; border: 0; background: none; font: inherit; font-size: 13.5px; font-weight: 600; color: var(--hint); padding: 7px 0; border-radius: 8px; cursor: pointer; }
+.nf-seg button.on { background: var(--bg); color: var(--text); box-shadow: 0 1px 3px rgba(15,23,42,.12); }
+html[data-theme="dark"] .nf-seg button.on { background: color-mix(in srgb, var(--text) 14%, var(--bg)); }
+.nf-rep, .nf-chip { display: inline-flex; align-items: center; gap: 5px; height: 36px; padding: 0 12px; border-radius: 11px; border: 0; background: var(--soft); color: var(--btn); font: inherit; font-size: 13px; font-weight: 600; flex: none; cursor: pointer; }
+.nf-chip { height: 42px; color: var(--text); }
+.nf-rep .ic { width: 15px; height: 15px; }
+.nf-it { background: var(--bg); border-radius: 20px; box-shadow: var(--shadow14); padding: 12px 14px; margin-bottom: 10px; }
+.nf-ih { display: flex; align-items: center; gap: 10px; }
+.nf-lg { width: 38px; height: 38px; border-radius: 12px; color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 15px; flex: none; }
+.nf-in-name { flex: 1; min-width: 0; border: 0; background: none; font: inherit; color: var(--text); text-align: left; padding: 0; cursor: pointer; }
+.nf-in-name b { display: block; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nf-in-name small { display: block; font-size: 12px; color: var(--hint); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nf-x { width: 30px; height: 30px; border-radius: 50%; border: 0; background: var(--soft); color: var(--hint); font-size: 13px; flex: none; cursor: pointer; }
+.input.nf-in { height: 42px; border-radius: 12px; font-size: 15px; width: 100%; }
+.nf-fl { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+.nf-fl .grow { min-width: 0; }
+.stepper.nf-st { flex: none; height: 42px; border-radius: 12px; }
+.nf-cur { flex: none; height: 42px; }
+.nf-cur button { width: 36px; flex: none; }
+.nf-szs { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.nf-szs em { font-style: normal; font-size: 11.5px; color: var(--hint); margin-right: 2px; }
+.nf-szs button { height: 28px; padding: 0 10px; border-radius: 9px; border: 0; background: var(--soft); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.nf-szs button.on { background: color-mix(in srgb, var(--btn) 14%, transparent); color: var(--btn); }
+.nf-pr { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--sep); font-size: 12.5px; }
+.nf-pr b { font-size: 15px; font-weight: 700; }
+.nf-add { width: 100%; height: 46px; border-radius: 14px; border: 1.5px dashed color-mix(in srgb, var(--hint) 45%, transparent); background: none; color: var(--btn); font: inherit; font-size: 14.5px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 6px; cursor: pointer; }
+.nf-add .ic { width: 17px; height: 17px; }
+.nf-list { background: var(--bg); border-radius: 20px; box-shadow: var(--shadow14); overflow: hidden; }
+.nf-d { position: relative; }
+.nf-d + .nf-d::before { content: ""; position: absolute; top: 0; left: 58px; right: 0; border-top: 1px solid var(--sep); }
+.nf-dr { width: 100%; display: flex; align-items: center; gap: 12px; padding: 11px 14px; border: 0; background: none; font: inherit; font-size: 15px; font-weight: 500; color: var(--text); text-align: left; cursor: pointer; }
+.nf-dr:active { background: var(--soft); }
+.nf-di { width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center; flex: none; }
+.nf-di .ic { width: 17px; height: 17px; }
+.nf-dv { font-size: 14px; color: var(--hint); font-weight: 500; max-width: 50%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nf-dv.a, .nf-d.open .nf-dv { color: var(--btn); font-weight: 600; }
+.nf-db { padding: 0 14px 12px 58px; }
+.nf-row3 { display: flex; gap: 8px; }
+.nf-row3 label { flex: 1; min-width: 0; font-size: 12px; color: var(--hint); display: flex; flex-direction: column; gap: 4px; }
+.nf-tags { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 2px 0; }
+.nf-tags span { height: 26px; padding: 0 9px; border-radius: 9px; background: var(--bg); box-shadow: var(--shadow14); font-size: 12px; color: var(--hint); display: inline-flex; align-items: center; font-weight: 500; }
+.nf-cs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.nf-cs button { border: 0; background: var(--bg); border-radius: 18px; box-shadow: var(--shadow14); padding: 12px 4px 10px; display: flex; flex-direction: column; align-items: center; gap: 6px; font: inherit; color: var(--text); cursor: pointer; min-width: 0; }
+.nf-cs b { width: 42px; height: 42px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-size: 14px; font-weight: 700; }
+.nf-cs span { font-size: 12.5px; font-weight: 600; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 4px; }
+.nf-man { display: block; width: 100%; height: 48px; margin-top: 14px; border: 0; border-radius: 15px; background: var(--bg); box-shadow: var(--shadow14); color: var(--btn); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
+.sum-bar.nf-bar { padding: 10px 16px; }
+.nf-bar .sum-v { font-size: 20px; }
+.nf-bar .row > div { gap: 1px; }
