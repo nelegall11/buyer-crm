@@ -326,18 +326,21 @@ function mergeOrders(list) {
 
 let syncQueue = Promise.resolve();
 let syncPending = 0;
+const pendingByNo = {}; // сколько изменений по заказу ещё не сохранено
 
 // apply(o) меняет заказ на телефоне; action/data — что отправить в таблицу. Возвращает «как было» (для «Отменить»).
 function mutate(nos, apply, action, data) {
   const before = snapshot(nos);
-  nos.forEach(no => { const o = findOrder(no); if (o) apply(o); });
+  nos.forEach(no => { const o = findOrder(no); if (o) apply(o); pendingByNo[no] = (pendingByNo[no] || 0) + 1; });
   saveCacheSoon();
   syncPending++;
   updateSyncBadge();
   syncQueue = syncQueue.then(async () => {
     try {
       const res = await api(action, data);
-      if (res && res.orders) mergeOrders(res.orders);
+      // Если по заказу ждут сохранения ещё изменения (быстро отметили несколько товаров) —
+      // ответ сервера пока старее экрана: не затираем, примем ответ на последнее изменение
+      if (res && res.orders) mergeOrders(res.orders.filter(o => (pendingByNo[o.no] || 0) <= 1));
     } catch (err) {
       console.error(err);
       mergeOrders(before);
@@ -345,6 +348,7 @@ function mutate(nos, apply, action, data) {
       toast(`Не сохранилось (${msg}). Вернули как было`, true);
       haptic('error');
     } finally {
+      nos.forEach(no => { pendingByNo[no] = Math.max(0, (pendingByNo[no] || 0) - 1); });
       syncPending--;
       updateSyncBadge();
       saveCacheSoon();
@@ -1028,14 +1032,15 @@ const ACTIONS = {
     const no = Number(d.no);
     const id = Number(d.id);
     const was = statusIdx(findOrder(no).status);
-    const bought = !findOrder(no).items.find(x => x.id === id).bought;
+    const idx = findOrder(no).items.findIndex(x => x.id === id);
+    const bought = !findOrder(no).items[idx].bought;
     mutate([no], o => {
       o.items.find(x => x.id === id).bought = bought;
       // Все товары отмечены → «Выкуплен»; сняли галочку у выкупленного → снова «Оплачен»
       const i = statusIdx(o.status);
       if (i === S.PAID && o.items.every(x => x.bought)) setLocalStatus(o, S.BOUGHT);
       else if (i === S.BOUGHT && !bought) setLocalStatus(o, S.PAID);
-    }, 'setBought', { no, itemId: id, bought });
+    }, 'setBought', { no, itemId: id, idx, bought });
     haptic('light');
     if (statusIdx(findOrder(no).status) === S.BOUGHT && was !== S.BOUGHT) {
       if (!state.justBought.includes(no)) state.justBought.push(no);
