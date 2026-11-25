@@ -685,6 +685,16 @@ const ACTIONS = {
     pickDraftClient(prev.client, prev.phone);
     ACTIONS.repeatLast(d);
   },
+  nfDetail: d => {
+    const dr = state.draft;
+    if (d.v === 'rates') { dr.ratesOpen = !dr.ratesOpen; dr.detail = null; }
+    else { dr.detail = dr.detail === d.v ? null : d.v; dr.ratesOpen = false; }
+    saveDraft();
+    render();
+    const el = $('.nf-db input');
+    if (el && d.v !== 'due' && dr.detail === d.v) el.focus();
+  },
+  linkEdit: d => { const it = state.draft.items[Number(d.i)]; it.linkOpen = !it.linkOpen; saveDraft(); render(); },
   ratesToggle: () => { state.draft.ratesOpen = !state.draft.ratesOpen; saveDraft(); render(); },
   payMethod: d => { const dr = state.draft; dr.payMethod = dr.payMethod === d.v ? '' : d.v; saveDraft(); render(); },
   discountPct: d => {
@@ -1751,86 +1761,81 @@ function newOrderTab() {
         <button class="btn small" data-act="dropFailed">Удалить</button>
       </div></div>` : ''}
 
-    <div class="nw-chk"><b>${d.addTo ? `Добавить в №${d.addTo}` : 'Проверьте заказ'}</b><button data-act="newBack">${icon('bolt')}Одной строкой</button></div>
+    <div class="nw-chk"><b>${d.addTo ? `Добавить в №${d.addTo}` : 'Проверьте заказ'}</b><button data-act="newBack">${icon('bolt')}Строкой</button></div>
     ${d.quickInfo ? `<div class="paste-info" style="margin-top:0">${d.quickInfo}</div>` : d.pasteInfo ? `<div class="paste-info" style="margin-top:0">${d.pasteInfo}</div>` : ''}
 
-    <div class="section-title">Клиент</div>
-    <div class="card">
+    <div class="nf-card">
       ${clientFieldHtml(d, known)}
-      ${d.addTo ? `<div class="infobox accent">${icon('plus')}<span class="grow">Товары добавятся в заказ №${d.addTo}</span><button class="link-btn" data-act="addToCancel">Отменить</button></div>`
-        : open && !d.dupHidden ? `<div class="infobox">${icon('note')}<span class="grow">У клиента есть заказ №${open.no} «${esc(open.status)}» — добавить товары в него?</span></div>
-          <div class="btn-row tight"><button class="btn small" data-act="addToOrder" data-no="${open.no}">Добавить в №${open.no}</button><button class="btn small" data-act="dupHide">Новый заказ</button></div>` : ''}
-      <div class="row" style="margin-top:12px;gap:8px">
-        <div class="seg grow">
+      ${d.addTo ? `<div class="nf-tip">${icon('plus')}<b>Товары добавятся в заказ №${d.addTo}</b><button data-act="addToCancel">Отменить</button></div>`
+        : open && !d.dupHidden ? `<div class="nf-tip"><b>Есть ${statusIdx(open.status) === S.WAIT ? 'неоплаченный' : 'открытый'} №${open.no} — добавить туда?</b><button data-act="addToOrder" data-no="${open.no}">Добавить</button><button class="x" data-act="dupHide" aria-label="Нет, новый заказ">✕</button></div>` : ''}
+      <div class="nf-optrow">
+        <div class="nf-seg grow">
           <button class="${d.opt ? '' : 'on'}" data-act="opt" data-v="0">Розница</button>
           <button class="${d.opt ? 'on' : ''}" data-act="opt" data-v="1">Опт</button>
         </div>
-        ${prev && blank && !d.addTo ? `<button class="chip" data-act="repeatLast" data-no="${prev.no}">${icon('repeat')}Как в прошлый раз</button>` : ''}
+        ${prev && blank && !d.addTo ? `<button class="nf-rep" data-act="repeatLast" data-no="${prev.no}">${icon('repeat')}Как в прошлый раз</button>` : ''}
       </div>
     </div>
 
-    <div class="section-title">Товары${d.items.length > 1 ? ' · ' + d.items.length : ''}</div>
+    <div class="nf-h">Товары${d.items.length > 1 ? ' · ' + d.items.length : ''}</div>
     ${d.items.map((it, i) => itemFormHtml(it, i, c.items[i], d.items.length, sizes)).join('')}
-    <button class="btn ghost" data-act="addItem">${icon('plus')}Добавить товар</button>
+    <button class="nf-add" data-act="addItem">${icon('plus')}Добавить товар</button>
 
-    ${d.ratesOpen ? `
-      <div class="section-title row between"><span>Наценка и курс</span><button class="link-btn" data-act="ratesToggle">Свернуть</button></div>
-      <div class="card">
-        <div class="fields-row">
-          <div class="field"><label>Наценка, %</label>
-            <input class="input" data-f="markup" inputmode="decimal" value="${esc(d.markup)}"></div>
-          <div class="field"><label>Курс $, ₸</label>
-            <input class="input" data-f="rateUsd" inputmode="decimal" value="${esc(d.rateUsd)}"></div>
-          ${hasEur ? `<div class="field"><label>Курс €, ₸</label>
-            <input class="input" data-f="rateEur" inputmode="decimal" value="${esc(d.rateEur)}"></div>` : ''}
-        </div>
-      </div>` : `
-      <button class="card fold" data-act="ratesToggle">
-        <span class="grow"><span class="hint small">Наценка и курс</span><span class="fold-v">${esc(d.markup || 0)}% · $ ${esc(d.rateUsd || '—')} ₸${hasEur ? ` · € ${esc(d.rateEur || '—')} ₸` : ''}</span></span>
-        <span class="link-btn">Изменить</span>
-      </button>`}
-
-    ${d.addTo ? '' : `
-      <div class="section-title">Добавить к цене</div>
-      <div class="card">
-        <div class="xrow">${icon('truck')}<span class="grow">Доставка клиенту</span>
-          <input class="input xin" data-f="delivery" inputmode="numeric" placeholder="0 ₸" value="${esc(d.delivery)}"></div>
-        <div class="xrow">${icon('percent')}<span class="grow">Скидка</span>
-          <button class="chip sm" data-act="discountPct" data-v="5">5%</button><button class="chip sm" data-act="discountPct" data-v="10">10%</button>
-          <input class="input xin" data-f="discount" inputmode="numeric" placeholder="0 ₸" value="${esc(d.discount)}"></div>
-      </div>`}
-
-    <div class="section-title">Сколько клиент уже оплатил?</div>
-    <div class="card">
-      <div class="seg" id="paidSeg">
+    <div class="nf-h">Оплата</div>
+    <div class="nf-card pad">
+      <div class="nf-seg" id="paidSeg">
         <button class="${d.paidMode === 'all' ? 'on' : ''}" data-act="paid" data-v="all">Всё</button>
         <button class="${d.paidMode === 'half' ? 'on' : ''}" data-act="paid" data-v="half">50%</button>
         <button class="${d.paidMode === 'none' ? 'on' : ''}" data-act="paid" data-v="none">Ничего</button>
         <button class="${d.paidMode === 'custom' ? 'on' : ''}" data-act="paid" data-v="custom">Сумма</button>
       </div>
-      ${d.paidMode === 'custom' ? `<div class="field" style="margin-top:10px">
-        <input class="input" data-f="paidCustom" inputmode="decimal" placeholder="Сумма, ₸" value="${esc(d.paidCustom)}"></div>` : ''}
-      ${d.paidMode && d.paidMode !== 'none' ? `<div class="chips plain" style="margin-top:10px">${PAY_METHODS.map(m =>
-        `<button class="chip sm ${d.payMethod === m ? 'on' : ''}" data-act="payMethod" data-v="${m}">${m}</button>`).join('')}</div>` : ''}
+      ${d.paidMode === 'custom' ? `<input class="input nf-in" data-f="paidCustom" inputmode="decimal" placeholder="Сумма, ₸" value="${esc(d.paidCustom)}" style="margin-top:8px">` : ''}
+      ${d.paidMode && d.paidMode !== 'none' ? `<div class="nf-szs" style="margin-top:8px">${PAY_METHODS.map(m =>
+        `<button class="${d.payMethod === m ? 'on' : ''}" data-act="payMethod" data-v="${m}">${m}</button>`).join('')}</div>` : ''}
     </div>
 
-    ${d.addTo ? '' : `
-      <div class="section-title">Ещё</div>
-      <div class="card">
-        <div class="xrow">${icon('calendar')}<span class="grow">Нужно к дате</span>
-          <input class="input xin wide" type="date" data-f="due" value="${esc(d.due)}"></div>
-        <div class="xrow">${icon('note')}<input class="input grow" data-f="comment" placeholder="Комментарий: подарок, без чека…" value="${esc(d.comment)}" autocomplete="off"></div>
-      </div>`}
+    <div class="nf-h">Детали</div>
+    <div class="nf-list">
+      ${nfDetail('rates', 'percent', '#2563EB', 'Наценка и курс', `${esc(d.markup || 0)}% · $ ${esc(d.rateUsd || '—')}${hasEur ? ` · € ${esc(d.rateEur || '—')}` : ''}`, true, `
+        <div class="nf-row3">
+          <label>Наценка, %<input class="input nf-in" data-f="markup" inputmode="decimal" value="${esc(d.markup)}"></label>
+          <label>Курс $, ₸<input class="input nf-in" data-f="rateUsd" inputmode="decimal" value="${esc(d.rateUsd)}"></label>
+          ${hasEur ? `<label>Курс €, ₸<input class="input nf-in" data-f="rateEur" inputmode="decimal" value="${esc(d.rateEur)}"></label>` : ''}
+        </div>`)}
+      ${d.addTo ? '' : nfDetail('delivery', 'truck', '#7C3AED', 'Доставка клиенту', parseNum(d.delivery) ? money(parseNum(d.delivery)) : '', false, `
+        <input class="input nf-in" data-f="delivery" inputmode="numeric" placeholder="Сумма, ₸" value="${esc(d.delivery)}">`)}
+      ${d.addTo ? '' : nfDetail('discount', 'tag', '#EA580C', 'Скидка', parseNum(d.discount) ? '−' + money(parseNum(d.discount)) : '', false, `
+        <div class="nf-optrow" style="margin-top:0"><button class="nf-chip" data-act="discountPct" data-v="5">5%</button><button class="nf-chip" data-act="discountPct" data-v="10">10%</button>
+        <input class="input nf-in grow" data-f="discount" inputmode="numeric" placeholder="Сумма, ₸" value="${esc(d.discount)}"></div>`)}
+      ${d.addTo ? '' : nfDetail('due', 'calendar', '#059669', 'Нужно к дате', d.due ? fmtDate(d.due) : '', false, `
+        <input class="input nf-in" type="date" data-f="due" value="${esc(d.due)}">`)}
+      ${d.addTo ? '' : nfDetail('comment', 'note', '#64748B', 'Комментарий', d.comment ? esc(d.comment) : '', false, `
+        <input class="input nf-in" data-f="comment" placeholder="Подарок, без чека…" value="${esc(d.comment)}" autocomplete="off">`)}
+    </div>
 
-    <div class="sum-bar">
+    <div class="sum-bar nf-bar">
       <div class="row between">
-        <div><span class="hint small">Клиенту${n ? ' · ' + n + ' ' + (n === 1 ? 'товар' : n < 5 ? 'товара' : 'товаров') : ''}</span><b class="sum-v money" id="dTotal">${money(c.total)}</b></div>
-        <div class="r"><span class="hint small">Ваша прибыль</span><b class="ok money" id="dProfit">${money(c.profit)}</b></div>
+        <div><b class="sum-v money" id="dTotal">${money(c.total)}</b><span class="hint small">${n ? n + ' ' + (n === 1 ? 'товар' : n < 5 ? 'товара' : 'товаров') + ' · ' : ''}клиенту</span></div>
+        <div class="r"><b class="ok money" id="dProfit">${money(c.profit)}</b><span class="hint small">ваша прибыль</span></div>
       </div>
       <div class="hint small" id="dLeft">${leftText(c)}</div>
     </div>
 
     <button class="link-btn" data-act="clearDraft" style="margin-top:6px;color:var(--hint)">Очистить форму</button>`;
+}
+
+// Строка в «Деталях»: нажали — раскрылось поле. Если что-то заполнено — значение справа.
+function nfDetail(key, ic, color, label, value, always, body) {
+  const d = state.draft;
+  const open = d.detail === key || (key === 'rates' && d.ratesOpen);
+  return `<div class="nf-d ${open ? 'open' : ''}">
+    <button class="nf-dr" data-act="nfDetail" data-v="${key}">
+      <span class="nf-di" style="color:${color};background:color-mix(in srgb, ${color} 12%, transparent)">${icon(ic)}</span>
+      <span class="grow">${label}</span>
+      <span class="nf-dv ${value || always ? '' : 'a'}">${open ? 'Свернуть' : value || (key === 'due' ? 'Указать' : 'Добавить')}</span>
+    </button>
+    ${open ? `<div class="nf-db">${body}</div>` : ''}
+  </div>`;
 }
 
 function isNewStart() {
@@ -1854,69 +1859,65 @@ function newStartHtml(d) {
         <button class="nw-paste" data-act="pasteToggle">${icon('paste')}Из WhatsApp</button>
       </div>
     </div>
-    ${d.quickInfo ? `<div class="paste-info">${d.quickInfo}</div>` : `<div class="nw-hint">${icon('bolt')}Клиент, магазин, размер, цена со значком (120$, 95€, 45000тг). Каждый товар — с новой строки, «x2» — количество, можно дописать «опт» или «оплачено».</div>`}
+    ${d.quickInfo ? `<div class="paste-info">${d.quickInfo}</div>` : `<div class="nf-tags">${['имя клиента', 'ссылка', 'размер', '120$ · 95€ · 45000тг', 'x2', 'опт', 'оплачено'].map(t => `<span>${t}</span>`).join('')}</div>`}
     ${d.pasteOpen ? `
       <div class="od-card" style="margin-top:12px">
         <textarea class="input" data-f="pasteText" placeholder="Вставьте сюда текст из WhatsApp: телефон, ссылки, цены, размер…">${esc(d.pasteText)}</textarea>
         <button class="btn primary" data-act="parsePaste" style="margin-top:8px">Заполнить форму</button>
         ${d.pasteInfo ? `<div class="paste-info">${d.pasteInfo}</div>` : ''}
       </div>` : ''}
-    ${top.length ? `<div class="cc-h">Частые клиенты</div>
-      <div class="nw-chips">${top.map(c => `<button data-act="pickClient" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}"><b style="${avStyle(c.name)}">${esc(initials(c.name))}</b>${esc(c.name)}</button>`).join('')}</div>` : ''}
-    ${repeat.length ? `<div class="cc-h">Повторить заказ</div>
+    ${top.length ? `<div class="nf-h">Частые клиенты</div>
+      <div class="nf-cs">${top.map(c => `<button data-act="pickClient" data-name="${esc(c.name)}" data-phone="${esc(c.phone)}"><b style="${avStyle(c.name)}">${esc(initials(c.name))}</b><span>${esc(c.name)}</span></button>`).join('')}</div>` : ''}
+    ${repeat.length ? `<div class="nf-h">Повторить заказ</div>
       <div class="cl-g" style="margin-top:0">${repeat.map(o => {
         const shop = isUrl((o.items[0] || {}).link) ? site(o.items[0].link) : '';
-        return `<div class="cl-r" data-act="repeatOrder" data-no="${o.no}">
-          <span class="nw-logo" style="background:${shopColor(shop || o.client)}">${esc((shop || o.client).charAt(0).toUpperCase())}</span>
-          <span class="cl-t"><b><span class="ellipsis">${esc(o.client)}${shop ? ' · ' + esc(shop) : ''}</span></b><small>${o.count} ${o.count === 1 ? 'товар' : o.count < 5 ? 'товара' : 'товаров'} · ${money(o.total)} · ${fmtDate(o.date)}</small></span>
-          <span class="pf-c">${icon('repeat')}</span></div>`;
+        const shopName = shop ? shop.split('.')[0].replace(/-demo$/, '').replace(/^./, ch => ch.toUpperCase()) : '';
+        const what = o.count > 1 ? `${o.count} ${o.count < 5 ? 'товара' : 'товаров'}` : (o.items[0] ? productName(o.items[0].link) : '');
+        return `<div class="cl-r cl4-r" data-act="repeatOrder" data-no="${o.no}">
+          <span class="nw-logo" style="background:${shopColor(shop || o.client)}">${esc((shopName || o.client).charAt(0).toUpperCase())}</span>
+          <span class="cl-t"><b><span class="ellipsis">${esc(o.client)}</span></b><small class="ellipsis">${esc([shopName, what].filter(Boolean).join(', '))} · ${fmtDate(o.date)}</small></span>
+          <span class="cl4-v"><b>${moneyNum(o.total)} ₸</b><small>повторить</small></span></div>`;
       }).join('')}</div>` : ''}
-    <button class="nw-alt" data-act="manualForm">Заполнить вручную</button>`;
+    <button class="nf-man" data-act="manualForm">Заполнить вручную</button>`;
 }
 
 function itemFormHtml(it, i, calc, count, sizes) {
   const shop = isUrl(it.link) ? site(it.link) : '';
+  const name = shop ? productName(it.link) : (it.link.trim() || `Товар ${i + 1}`);
+  const showLink = !it.link.trim() || it.linkOpen;
   return `
-    <div class="card item-card">
-      <div class="item-head">
-        <span class="row" style="gap:8px"><span class="num">${i + 1}</span>${shop ? `<span class="tag">${esc(shop)}</span>` : 'Товар'}</span>
-        ${count > 1 ? `<button class="item-del" data-act="delItem" data-i="${i}">Удалить</button>` : ''}
+    <div class="nf-it">
+      <div class="nf-ih">
+        <span class="nf-lg" style="background:${shop ? shopColor(shop) : 'var(--btn)'}">${shop ? esc(shop.charAt(0).toUpperCase()) : i + 1}</span>
+        <button class="nf-in-name" data-act="linkEdit" data-i="${i}"><b>${esc(name)}</b><small>${shop ? esc(shop) : it.link.trim() ? 'описание' : 'вставьте ссылку'}${it.link.trim() ? ` · ${it.linkOpen ? 'свернуть' : 'изменить'}` : ''}</small></button>
+        ${count > 1 ? `<button class="nf-x" data-act="delItem" data-i="${i}" aria-label="Удалить товар">✕</button>` : ''}
       </div>
-      <div class="field">
-        <input class="input" data-f="link" data-i="${i}" value="${esc(it.link)}" placeholder="Ссылка или описание товара" autocomplete="off">
-      </div>
-      <div class="fields-row">
-        <div class="field" style="flex:1.4">
-          <input class="input" data-f="size" data-i="${i}" value="${esc(it.size)}" placeholder="Размер / цвет">
-        </div>
-        <div class="field">
-          <div class="stepper">
-            <button data-act="qty" data-i="${i}" data-v="-1" aria-label="Меньше">−</button>
-            <input data-f="qty" data-i="${i}" inputmode="numeric" value="${esc(it.qty)}" aria-label="Количество">
-            <button data-act="qty" data-i="${i}" data-v="1" aria-label="Больше">+</button>
-          </div>
+      ${showLink ? `<input class="input nf-in" data-f="link" data-i="${i}" value="${esc(it.link)}" placeholder="Ссылка или описание товара" autocomplete="off" style="margin-top:10px">` : ''}
+      <div class="nf-fl">
+        <input class="input nf-in grow" data-f="size" data-i="${i}" value="${esc(it.size)}" placeholder="Размер / цвет">
+        <div class="stepper nf-st">
+          <button data-act="qty" data-i="${i}" data-v="-1" aria-label="Меньше">−</button>
+          <input data-f="qty" data-i="${i}" inputmode="numeric" value="${esc(it.qty)}" aria-label="Количество">
+          <button data-act="qty" data-i="${i}" data-v="1" aria-label="Больше">+</button>
         </div>
       </div>
-      ${sizes && sizes.length ? `<div class="size-hint"><span class="hint small">обычно:</span>${sizes.map(z =>
-        `<button class="chip sm ${it.size === z ? 'on' : ''}" data-act="sizePick" data-i="${i}" data-v="${esc(z)}">${esc(z)}</button>`).join('')}</div>` : ''}
-      <div class="fields-row">
-        <div class="field" style="flex:1.4">
-          <input class="input" data-f="amount" data-i="${i}" inputmode="decimal" value="${esc(it.amount)}"
-            placeholder="Цена${Number(it.qty) > 1 ? ' за 1 шт' : ''} на сайте">
-        </div>
-        <div class="field">
-          <div class="seg">
-            ${['$', '€', '₸'].map(cur => `<button class="${it.currency === cur ? 'on' : ''}" data-act="cur" data-i="${i}" data-v="${cur}">${cur}</button>`).join('')}
-          </div>
+      ${sizes && sizes.length ? `<div class="nf-szs"><em>обычно</em>${sizes.map(z =>
+        `<button class="${it.size === z ? 'on' : ''}" data-act="sizePick" data-i="${i}" data-v="${esc(z)}">${esc(z)}</button>`).join('')}</div>` : ''}
+      <div class="nf-fl">
+        <input class="input nf-in grow" data-f="amount" data-i="${i}" inputmode="decimal" value="${esc(it.amount)}" placeholder="Цена${Number(it.qty) > 1 ? ' за 1 шт' : ''} на сайте">
+        <div class="nf-seg nf-cur">
+          ${['$', '€', '₸'].map(cur => `<button class="${it.currency === cur ? 'on' : ''}" data-act="cur" data-i="${i}" data-v="${cur}">${cur}</button>`).join('')}
         </div>
       </div>
-      <div class="item-price row between" id="ip${i}">${itemPriceHtml(it, calc)}</div>
+      <div class="nf-pr" id="ip${i}">${itemPriceHtml(it, calc)}</div>
     </div>`;
 }
 
 function itemPriceHtml(it, calc) {
   if (!calc || !calc.price) return `<span class="hint">Цена клиенту появится, когда введёте цену</span>`;
-  const how = it.currency === '₸' ? `${fmtNum(calc.amount)} ₸ × ${calc.qty} + наценка` : `${fmtNum(calc.amount)} ${it.currency} × ${calc.qty} × ${fmtNum(calc.rate)} ₸ + наценка`;
+  const mk = `+ ${esc(state.draft.markup || 0)}%`;
+  const q = calc.qty > 1 ? ` × ${calc.qty}` : '';
+  const how = it.currency === '₸' ? `${fmtNum(calc.amount)} ₸${q} ${mk}` : `${fmtNum(calc.amount)} ${it.currency}${q} × ${fmtNum(calc.rate)} ₸ ${mk}`;
   return `<span class="hint">${how}</span><b class="money">${money(calc.price)}</b>`;
 }
 
@@ -1992,16 +1993,15 @@ function clientFieldHtml(d, known) {
   // Клиент выбран — показываем карточку
   if (d.picked) {
     return `
-      <div class="picked">
-        <span class="ava big">${esc(initials(d.client || '?'))}</span>
-        <div class="grow">
-          <b class="ellipsis" style="display:block">${esc(d.client || 'Без имени')}</b>
-          <span class="hint small">${esc(d.phone || (d.instagram ? '' : 'без телефона'))}${d.instagram ? `${d.phone ? ' · ' : ''}@${esc(d.instagram)}` : ''}</span>
-          ${known ? `<div class="known">${icon('check')}Постоянный клиент · ${ordersWord(known.count)}</div>` : ''}
-          ${noteFor(d.client, d.phone) ? `<div class="note-line">${icon('note')}${esc(noteFor(d.client, d.phone))}</div>` : ''}
+      <div class="nf-who">
+        <span class="nf-av" style="${avStyle(d.client || '?')}">${esc(initials(d.client || '?'))}</span>
+        <div class="grow" style="min-width:0">
+          <b class="ellipsis">${esc(d.client || 'Без имени')}</b>
+          <small class="ellipsis">${esc(d.phone || (d.instagram ? '' : 'без телефона'))}${d.instagram ? `${d.phone ? ' · ' : ''}@${esc(d.instagram)}` : ''}${known ? ` · ${ordersWord(known.count)}` : ' · новый клиент'}</small>
         </div>
-        <button class="link-btn" data-act="unpickClient">Изменить</button>
-      </div>`;
+        <button class="nf-link" data-act="unpickClient">Сменить</button>
+      </div>
+      ${noteFor(d.client, d.phone) ? `<div class="note-line">${icon('note')}${esc(noteFor(d.client, d.phone))}</div>` : ''}`;
   }
   // Недавние клиенты — выбрать одним нажатием
   const recent = groupByClient(state.orders).slice(0, 6);
@@ -4617,6 +4617,7 @@ const ICONS = {
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
   card: '<rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M6 15h4"/>',
   palette: '<path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-.5-.2-.9-.5-1.3-.3-.3-.5-.8-.5-1.2 0-1 .8-1.7 1.8-1.7H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/>',
+  tag: '<path d="M20 12l-8 8-9-9V3h8z"/><circle cx="7.5" cy="7.5" r="1.5"/>',
   percent: '<path d="M19 5L5 19"/><circle cx="7" cy="7" r="2.2"/><circle cx="17" cy="17" r="2.2"/>',
   offline: '<path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.5-2.8M19 13a10 10 0 0 0-2.4-1.7M2 9.5a15 15 0 0 1 4.3-2.6M22 9.5A15 15 0 0 0 11 5.6"/><path d="M12 20h.01"/>',
 };
